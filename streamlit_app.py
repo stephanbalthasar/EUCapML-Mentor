@@ -7,6 +7,9 @@ import streamlit as st
 from app.bootstrap_booklet import load_booklet_index
 INDEX = load_booklet_index()  # {"paragraphs": [...], "chapters": [...]}
 
+from app.bootstrap_cases import load_cases
+CASES = load_cases()
+
 from mentor.booklet.retriever import ParagraphRetriever, ChapterRetriever
 from mentor.engines.chat_engine import ChatEngine
 from mentor.engines.feedback_engine import FeedbackEngine
