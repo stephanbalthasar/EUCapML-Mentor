@@ -105,24 +105,38 @@ with tab_feedback:
 
         if run:
             if mode == "Plan":
-                if not q_label:
-                    st.warning("Please select a question.")
-                else:
-                    with st.spinner("Planning..."):
-                        plan = feedback_engine.plan_answer(
-                            case_text=sel_case.get("description", f"[{sel_case['title']}]"),
-                            question=q_label,
-                            model=model,
-                            temperature=temp
-                        )
-                    st.session_state.setdefault("feedback_store", {})
-                    st.session_state["feedback_store"][storage_key] = {
-                        "mode": "Plan",
-                        "answer": ans,
-                        "feedback": plan
-                    }
-                    last = st.session_state["feedback_store"][storage_key]
+                # (a) model-answer slice for the selected question
+                sections = sel_case.get("model_answer_sections") or []
+                model_slice = sections[q_index] if (0 <= q_index < len(sections)) else ""
+            
+                # (b) best booklet chapter (query: case title + question label + short anchor from model slice)
+                #     You already have chap_retriever in scope.
+                #     Keep the query short to avoid noise.
+                anchor = (model_slice or "")[:400]
+                query  = f"{sel_case.get('title','')} {q_label} {anchor}"
+                best_chapter = chap_retriever.retrieve_best(query) if chap_retriever else None
+                booklet_text = (best_chapter or {}).get("text", "")
+            
+                # call Plan with all 3 inputs
+                with st.spinner("Planning..."):
+                    plan = feedback_engine.plan_answer(
+                        case_text=sel_case.get("description", f"[{sel_case['title']}]"),
+                        question=q_label,
+                        model_answer_slice=model_slice,
+                        booklet_text=booklet_text,
+                        model=model,
+                        temperature=temp
+                    )
 
+                # persist on the right, as you already do
+                st.session_state.setdefault("feedback_store", {})
+                st.session_state["feedback_store"][f"{sel_case_id}::{q_index}"] = {
+                    "mode": "Plan",
+                    "answer": ans,
+                    "feedback": plan
+                }
+                last = st.session_state["feedback_store"][f"{sel_case_id}::{q_index}"]
+                        
             elif mode == "Evaluate":
                 # Prefer JSON slice; fall back to the textarea if provided
                 sections = sel_case.get("model_answer_sections") or []
