@@ -69,7 +69,7 @@ eucapml-mentor/
 ---
 
 ## ⚙️ Module Responsibilities
-## ⚙️ Modules at a glance
+### **Modules at a glance**
 
 - `mentor/engines/feedback_engine.py` — Plan / Evaluate / Explain a case.
 - `mentor/engines/chat_engine.py` — RAG‑augmented tutor (booklet + optional web).
