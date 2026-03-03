@@ -89,7 +89,7 @@ Implements the RAG‑augmented legal tutor:
 #### `client.py`
 Defines an abstract interface:
 
-```python
+python
 class LLMClient:
     def chat(self, messages: list[dict], **kwargs) -> str:
         ...
