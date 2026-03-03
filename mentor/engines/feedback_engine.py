@@ -1,46 +1,52 @@
-from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
-
-@dataclass
-class IssueScore:
-    issue: str
-    importance: int
-    keywords_hit: List[str]
-    keywords_missing: List[str]
-    score: int
-    max_points: int
-
-@dataclass
-class FeedbackResult:
-    similarity_pct: float
-    coverage_pct: float
-    final_score: float
-    per_issue: List[IssueScore]
-    sources: List[str]
-    excerpts: List[str]
-    narrative: str
-    meta: Dict[str, Any]
-
-@dataclass
-class PlanOutline:
-    sections: List[str]
-    topics: List[str]
-    legal_anchors: List[str]
-    suggested_flow: List[str]
-    sources: List[str]
+# mentor/engines/feedback_engine.py
 
 class FeedbackEngine:
-    """Three capabilities around a selected case: plan, evaluate, explain."""
-    def __init__(self, llm_client, retriever, prompts):
-        self.llm = llm_client
-        self.retriever = retriever
-        self.prompts = prompts
+    def __init__(self, llm):
+        self.llm = llm
 
-    def plan(self, *, case_data: dict, question_label: str, user_note: Optional[str] = None) -> PlanOutline:
-        raise NotImplementedError
+    # -------------------------------------------------------
+    # (i) Help student plan an answer
+    # -------------------------------------------------------
+    def plan_answer(self, *, case_text, question, model, temperature):
+        messages = [
+            {"role": "system", "content": "You help students plan structured exam answers."},
+            {"role": "user", "content": f"CASE:\n{case_text}\n\nQUESTION:\n{question}\n\nHelp me plan my answer."}
+        ]
+        return self.llm.chat(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=800
+        )
 
-    def evaluate(self, *, student_answer: str, case_data: dict) -> FeedbackResult:
-        raise NotImplementedError
+    # -------------------------------------------------------
+    # (ii) Evaluate a submitted answer
+    # -------------------------------------------------------
+    def evaluate_answer(self, *, student_answer, model_answer, model, temperature):
+        messages = [
+            {"role": "system", "content": "You compare the student's answer to the authoritative model answer."},
+            {"role": "user", "content":
+                f"MODEL ANSWER:\n{model_answer}\n\nSTUDENT ANSWER:\n{student_answer}\n\nGive structured feedback."}
+        ]
+        return self.llm.chat(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=1500
+        )
 
-    def explain(self, *, followup_question: str, prior_feedback: FeedbackResult) -> str:
-        raise NotImplementedError
+    # -------------------------------------------------------
+    # (iii) Follow-up questions about the feedback
+    # -------------------------------------------------------
+    def follow_up(self, *, question, previous_feedback, model, temperature):
+        messages = [
+            {"role": "system", "content": "You answer follow-up questions about previous feedback."},
+            {"role": "user", "content":
+                f"STUDENT QUESTION:\n{question}\n\nYOUR PREVIOUS FEEDBACK:\n{previous_feedback}"}
+        ]
+        return self.llm.chat(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=600
+        )
