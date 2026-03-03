@@ -1,4 +1,5 @@
 import requests
+from .client import LLMClient
 
 class GroqClient(LLMClient):
     def __init__(self, api_key: str):
