@@ -237,7 +237,7 @@ with tab_feedback:
                     st.session_state["chat_history"].append(("tutor", reply))
 
                     # force re-render
-                    st.experimental_rerun()
+                    st.rerun()
 
 # --- Tutor chat (separate, uncluttered) ---
 with tab_chat:
