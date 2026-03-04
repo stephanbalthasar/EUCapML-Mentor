@@ -48,15 +48,27 @@ class FeedbackEngine:
     # -------------------------------------------------------
     # (iii) Follow-up questions about the feedback
     # -------------------------------------------------------
-    def follow_up(self, *, question, previous_feedback, model, temperature):
-        messages = [
-            {"role": "system", "content": "You answer follow-up questions about previous feedback."},
-            {"role": "user", "content":
-                f"STUDENT QUESTION:\n{question}\n\nYOUR PREVIOUS FEEDBACK:\n{previous_feedback}"}
-        ]
-        return self.llm.chat(
-            messages=messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=600
-        )
+    
+    def follow_up_with_history(self, question, context, model, temperature):
+    messages = []
+
+    # Inject core context
+    messages.append({"role": "system", "content": f"Student exam answer:\n{context['student_answer']}"})
+    messages.append({"role": "system", "content": f"Feedback:\n{context['feedback']}"})
+
+    # Prior chat turns
+    for role, msg in context["history"]:
+        messages.append({
+            "role": "user" if role == "student" else "assistant",
+            "content": msg
+        })
+
+    # Current question
+    messages.append({"role": "user", "content": question})
+
+    # LLM call
+    return self.llm.chat(
+        messages,
+        model=model,
+        temperature=temperature
+    )
