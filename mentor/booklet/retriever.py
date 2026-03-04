@@ -49,7 +49,7 @@ class ParagraphRetriever:
             texts = [p["text"] for p in paragraphs]
             self._emb = embedder.encode(texts, normalize_embeddings=True)
 
-    def retrieve(self, query: str, top_k: int = 15) -> list[dict]:
+    def retrieve(self, query: str, top_k: int = 15, **kwargs) -> list[dict]:
         if not self.paragraphs:
             return []
 
