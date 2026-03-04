@@ -83,7 +83,7 @@ def render_privacy_overlay_if_requested():
 # --- minimalist logger: uses only LOG_GIST_TOKEN + GIST_ID ---
 def update_gist(new_entry):
     """
-    Append [timestamp, event, role] to logs.csv in a GitHub Gist.
+    Append [timestamp, event, role] to EUCapML_Mentor_Log.csv in a GitHub Gist.
     Uses a dedicated token only: st.secrets['LOG_GIST_TOKEN'].
     If not configured, this function silently no-ops.
     """
@@ -97,18 +97,18 @@ def update_gist(new_entry):
     url = f"https://api.github.com/gists/{gist_id}"
     headers = {"Authorization": f"token {token}"}
 
-    # 1) Read current logs.csv (or start with the header)
+    # 1) Read current EUCapML_Mentor_Log.csv (or start with the header)
     try:
         r = requests.get(url, headers=headers, timeout=8)
         files = r.json().get("files", {}) if r.status_code == 200 else {}
-        content = files.get("logs.csv", {}).get("content", "")
+        content = files.get(" EUCapML_Mentor_Log.csv", {}).get("content", "")
         lines = [ln for ln in content.splitlines() if ln.strip()] or ["timestamp,event,role"]
     except Exception:
         lines = ["timestamp,event,role"]
 
     # 2) Append the new entry and push
     lines.append(",".join(new_entry))
-    payload = {"files": {"logs.csv": {"content": "\n".join(lines)}}}
+    payload = {"files": {" EUCapML_Mentor_Log.csv": {"content": "\n".join(lines)}}}
     try:
         requests.patch(url, headers=headers, data=json.dumps(payload), timeout=8)
     except Exception:
