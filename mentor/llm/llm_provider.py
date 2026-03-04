@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional, Tuple
-from providers.openrouter_client import OpenRouterClient
+from providers.openrouter import OpenRouterClient
 from providers.groq_client import GroqClient
 from llm_registry import get_default_model, get_model_registry, ModelInfo
 
