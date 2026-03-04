@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 EVAL_MAX_WORDS = 300
-PLAN_MAX_WORDS = 180
+PLAN_MAX_WORDS = 100
 FOLLOWUP_MAX_WORDS = 160
 
 def build_evaluate_messages(student_answer: str, model_answer: str,
