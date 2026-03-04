@@ -10,7 +10,7 @@ INDEX = load_booklet_index()  # {"paragraphs": [...], "chapters": [...]}
 from app.bootstrap_cases import load_cases
 CASES = load_cases()
 
-from mentor.rag.retrieve import ParagraphRetriever, ChapterRetriever
+from mentor.booklet.retriever import ParagraphRetriever, ChapterRetriever
 from mentor.engines.chat_engine import ChatEngine
 from mentor.engines.feedback_engine import FeedbackEngine
 from mentor.llm.groq import GroqClient
