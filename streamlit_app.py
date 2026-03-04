@@ -331,7 +331,7 @@ with st.sidebar:
         st.success("Re-loaded. Re-run the action to use the latest JSON.")
 
 # --- Tabs: Feedback + Tutor chat ---
-tab_feedback, tab_chat = st.tabs(["📝 Feedback", "💬 Tutor chat"])
+tab_feedback, tab_chat = st.tabs(["📝 Sample Exam Cases", "💬 General Tutor Chat"])
 
 # Small helper: persist latest run per case+question
 def _key(case_id: str, q_label: str) -> str:
