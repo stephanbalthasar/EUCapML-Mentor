@@ -285,6 +285,46 @@ if not st.session_state.authenticated:
     # Stop rendering the rest of the app until authenticated
     st.stop()
 
+# Hint chip: show only when the sidebar is collapsed (authenticated pages)
+st.markdown(
+    """
+    <style>
+      :root{
+        --content-max: 1120px;  /* keep in sync with your global cap */
+        --page-pad: 12px;
+      }
+      /* Default: hide the chip (we'll show it when sidebar is collapsed) */
+      .sb-sidebar-hint{ display: none; }
+
+      /* When the sidebar is collapsed, show the chip */
+      [data-testid="stSidebar"][aria-expanded="false"] ~ div .sb-sidebar-hint{
+        display: inline-flex;
+      }
+
+      .sb-sidebar-hint{
+        position: fixed;
+        top: 10px;
+        /* Align with your content's left edge */
+        left: max(var(--page-pad), calc((100vw - var(--content-max))/2 + 8px));
+        z-index: 9998;
+        background: #123B7A; color: #fff;
+        padding: 4px 10px; border-radius: 999px;
+        font-size: 0.86rem; font-weight: 600;
+        box-shadow: 0 2px 8px rgba(5,16,28,0.15);
+        cursor: default;
+        user-select: none;
+      }
+
+      /* Hide the chip when the sidebar is visible */
+      [data-testid="stSidebar"][aria-expanded="true"] ~ div .sb-sidebar-hint{
+        display: none;
+      }
+    </style>
+    <div class="sb-sidebar-hint">◀ Show sidebar</div>
+    """,
+    unsafe_allow_html=True
+)
+
 # Compact app name bar (authenticated pages only)
 st.markdown("""
 <style>
@@ -324,8 +364,29 @@ feedback_engine = FeedbackEngine(llm=llm)
 # --- Sidebar controls ---
 with st.sidebar:
     st.caption(f"📖 Booklet loaded — {len(INDEX['chapters'])} chapters / {len(INDEX['paragraphs'])} paragraphs")
-    model = st.selectbox("Model", ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"], index=0)
-    temp  = st.slider("Temperature", 0.0, 1.0, 0.2, 0.05)
+
+    model = st.selectbox(
+        "Model",
+        ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"],
+        index=0,
+        help=(
+            "Model choice:\n"
+            "• llama‑3.1‑8b‑instant → faster, cheaper; good for drafts and everyday Q&A.\n"
+            "• llama‑3.3‑70b‑versatile → slower, more capable; better for nuanced legal analysis."
+        ),
+    )
+
+    temp = st.slider(
+        "Temperature",
+        0.0, 1.0, 0.2, 0.05,
+        help=(
+            "Controls randomness.\n"
+            "• 0.0–0.3 → deterministic, best for legal reasoning.\n"
+            "• 0.4–0.7 → more creative.\n"
+            "Higher values may produce inconsistent answers."
+        ),
+    )
+
     if st.button("Reload booklet index (server cache)"):
         st.cache_data.clear()
         st.success("Re-loaded. Re-run the action to use the latest JSON.")
