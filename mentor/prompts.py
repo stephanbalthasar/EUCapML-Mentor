@@ -5,6 +5,45 @@ EVAL_MAX_WORDS = 300
 PLAN_MAX_WORDS = 180
 FOLLOWUP_MAX_WORDS = 160
 
+# --- Tutor Chat (booklet-only) ---
+CHAT_MAX_WORDS = 220
+
+def build_tutor_chat_prompt_booklet_only(
+    booklet_excerpt: str,
+    user_question: str,
+    chapter_title: str | None = None,
+    max_words: int = CHAT_MAX_WORDS,
+) -> str:
+    """
+    Compose a single prompt string for booklet-grounded tutor chat.
+    The LLM must answer strictly from the provided booklet excerpt.
+    - If the topic is 'inside information', rely on MAR concepts (e.g., Article 7 / Article 17).
+    - Do NOT mention the Prospectus Regulation (PR) unless it appears in the excerpt.
+    - If the excerpt is insufficient, tell the student which booklet topic/chapter to consult; do not guess.
+    """
+    guard = (
+        "You are a helpful EU/German capital markets law tutor. "
+        "Answer strictly based on the COURSE BOOKLET excerpt provided below. "
+        "If the topic is inside information, rely on MAR concepts (e.g., Article 7 and Article 17). "
+        "Do NOT mention the Prospectus Regulation (PR) unless it appears in the excerpt. "
+        f"Keep the answer concise (≤ {max_words} words). "
+        "If the excerpt is insufficient, say which booklet topic/chapter to consult; do not guess."
+    )
+
+    title_line = f"EXCERPT SOURCE: {chapter_title}\n" if chapter_title else ""
+    excerpt_block = (booklet_excerpt or "").strip()
+    if not excerpt_block:
+        excerpt_block = "— (no excerpt). If uncertain, suggest where in the booklet to look by TOPIC (e.g., inside information under MAR)."
+
+    prompt = (
+        f"{guard}\n\n"
+        f"{title_line}"
+        f"COURSE BOOKLET EXCERPT:\n\"\"\"{excerpt_block}\"\"\"\n\n"
+        f"USER QUESTION:\n{(user_question or '').strip()}"
+    )
+    return prompt
+
+
 def build_evaluate_messages(student_answer: str, model_answer: str,
                             max_words: int = EVAL_MAX_WORDS) -> list[dict]:
     system = (
