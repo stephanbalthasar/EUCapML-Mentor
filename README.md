@@ -48,6 +48,10 @@ eucapml-mentor/
 ├── streamlit_app.py         # Streamlit UI wrapper
 ├── README.md
 ├── requirements.txt
+└── app/
+    ├── __init__.py
+    ├── bootstrap_booklet.py
+    └── bootstrap_cases.py
 └── mentor/
     ├── engines/
     │   ├── feedback_engine.py    Exam-style evaluator: plan/evaluate/explain
@@ -73,6 +77,8 @@ eucapml-mentor/
 
 ## ⚙️ Module Responsibilities
 ### **Modules at a glance**
+- `app/bootstrap_booklet.py` — Pulls booklet json from private repo.
+- `app/bootstrap_cases.py` — Pulls cases with model answers (json) from private repo.
 
 - `mentor/engines/feedback_engine.py` — Plan / Evaluate / Explain a case.
 - `mentor/engines/chat_engine.py` — RAG‑augmented tutor (booklet + optional web).
