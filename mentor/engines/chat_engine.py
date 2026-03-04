@@ -15,7 +15,7 @@ class ChatEngine:
         self.booklet_retriever = booklet_retriever
         self.web_retriever = web_retriever  # may be None for now
 
-def answer(self, user_query, *, model, temperature, max_tokens=800):
+    def answer(self, user_query, *, model, temperature, max_tokens=800):
     # 1) Extract keywords from query (stub for now)
     keywords = self._extract_keywords(user_query)
 
