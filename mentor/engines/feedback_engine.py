@@ -70,5 +70,6 @@ class FeedbackEngine:
         return self.llm.chat(
             messages=messages,
             model=model,
-            temperature=temperature
+            temperature=temperature,
+            max_tokens=800
         )
