@@ -212,7 +212,7 @@ CASES = load_cases()
 from mentor.booklet.retriever import ParagraphRetriever, ChapterRetriever
 from mentor.engines.chat_engine import ChatEngine
 from mentor.engines.feedback_engine import FeedbackEngine
-from mentor.llm.llm_provider import LLMProvider
+from mentor.llm.groq import GroqClient
 
 st.set_page_config(page_title="EUCapML Mentor", page_icon="⚖️", layout="wide")
 # Global width cap for a professional look (applies to all pages)
@@ -306,52 +306,36 @@ para_retriever = ParagraphRetriever(INDEX["paragraphs"])
 chap_retriever = ChapterRetriever(INDEX["chapters"])
 
 # --- LLM client ---
-# --- Provider & model selection (sidebar) + LLM wiring ---
+llm_api_key = st.secrets.get("GROQ_API_KEY")
+if not llm_api_key:
+    st.error("Missing GROQ_API_KEY in secrets.")
+    st.stop()
+llm = GroqClient(api_key=llm_api_key)
 
-# 1) Create the multi-provider client
-_llm_provider = LLMProvider()  # reads keys from st.secrets/env as implemented in your llm/
+# --- Engines ---
+chat_engine = ChatEngine(
+    llm=llm,
+    booklet_index=INDEX,
+    booklet_retriever=para_retriever,  
+    web_retriever=None                 
+)
+feedback_engine = FeedbackEngine(llm=llm)
 
-# 2) Sidebar: provider + model selectors (Qwen via OpenRouter is default)
+# --- Sidebar controls ---
 with st.sidebar:
     st.caption(f"📖 Booklet loaded — {len(INDEX['chapters'])} chapters / {len(INDEX['paragraphs'])} paragraphs")
 
-    # List available providers & models from your registry
-    default_model, registry = _llm_provider.list_models()  # (default_model, { provider: [ModelInfo, ...] })
-
-    provider_labels = {
-        "openrouter": "OpenRouter (Qwen default)",
-        "groq": "Groq (Llama)"
-    }
-    providers = list(registry.keys())
-
-    # Pick provider (default = whatever your registry marks as default; we set Qwen/OpenRouter there)
-    provider = st.selectbox(
-        "Provider",
-        options=providers,
-        index=providers.index(default_model.provider) if default_model.provider in providers else 0,
-        format_func=lambda p: provider_labels.get(p, p),
-        help="Choose OpenRouter (Qwen) for reliability; switch to Groq/Llama for testing or if Qwen is unavailable."
-    )
-
-    # Pick model (filtered by provider)
-    provider_models = registry.get(provider, [])
-    model_ids   = [m.model_id for m in provider_models]
-    model_labels = {m.model_id: m.label for m in provider_models}
-
-    # Default to the registry's default when on that provider
-    if provider == default_model.provider and default_model.model_id in model_ids:
-        default_idx = model_ids.index(default_model.model_id)
-    else:
-        default_idx = 0
-
-    model_id = st.selectbox(
+    model = st.selectbox(
         "Model",
-        options=model_ids,
-        index=default_idx,
-        format_func=lambda mid: model_labels.get(mid, mid),
+        ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"],
+        index=0,
+        help=(
+            "Model choice:\n"
+            "• llama‑3.1‑8b‑instant → faster, cheaper; good for drafts and everyday Q&A.\n"
+            "• llama‑3.3‑70b‑versatile → slower, more capable; better for nuanced legal analysis."
+        ),
     )
 
-    # Temperature control (kept from your original UI)
     temp = st.slider(
         "Temperature",
         0.0, 1.0, 0.2, 0.05,
@@ -363,76 +347,9 @@ with st.sidebar:
         ),
     )
 
-    # Show availability / fallback notice
-    if not _llm_provider.is_available(provider):
-        st.warning(
-            f"{provider_labels.get(provider, provider)} is not configured. "
-            f"The app will fall back to {default_model.label} on OpenRouter."
-        )
-
-    # Keep your maintenance button
     if st.button("Reload booklet index (server cache)"):
         st.cache_data.clear()
         st.success("Re-loaded. Re-run the action to use the latest JSON.")
-
-# Keep backward compatibility with the rest of your file
-# (Your engines and calls below expect a variable named `model`)
-model = model_id
-
-# 3) Provide a small adapter so existing engines don't need to know about `provider`.
-class _ProviderBoundLLM:
-    """
-    Adapter that binds a chosen provider. Engines can call .chat(...) or .complete(...).
-    Both route to LLMProvider.complete(...) under the hood.
-    """
-    def __init__(self, provider_client: LLMProvider, provider_name: str):
-        self._prov = provider_client
-        self.provider = provider_name
-
-    # Core call used by our adapter
-    def complete(self, messages, model=None, temperature=0.2, max_tokens=1200, top_p=0.9, **kwargs):
-        return self._prov.complete(
-            messages,
-            provider=self.provider,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=top_p,
-            allow_fallback=True,
-        )
-
-    # ✅ Some engines use llm.chat(...). Provide a direct alias.
-    def chat(self, messages, model=None, temperature=0.2, max_tokens=1200, top_p=0.9, **kwargs):
-        return self.complete(
-            messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=top_p,
-            **kwargs,
-        )
-
-    # (Optional) If any code calls streaming variants later, these no-op to non-streaming.
-    def chat_stream(self, *args, **kwargs):
-        return self.chat(*args, **kwargs)
-
-    def complete_stream(self, *args, **kwargs):
-        return self.complete(*args, **kwargs)
-
-    @property
-    def is_configured(self) -> bool:
-        return self._prov.is_available(self.provider)
-
-# 4) Instantiate the bound LLM and (re)create engines
-_llm = _ProviderBoundLLM(_llm_provider, provider)
-
-chat_engine = ChatEngine(
-    llm=_llm,
-    booklet_index=INDEX,
-    booklet_retriever=para_retriever,
-    web_retriever=None
-)
-feedback_engine = FeedbackEngine(llm=_llm)
 
 # --- Tabs: Feedback + Tutor chat ---
 tab_feedback, tab_chat = st.tabs(["📝 Sample Exam Cases", "💬 General Tutor Chat"])
