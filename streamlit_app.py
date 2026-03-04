@@ -141,7 +141,7 @@ if "role" not in st.session_state:
 
 # === PATCH 3: login gate ===
 if not st.session_state.authenticated:
-    st.title("European Capital Markets Law – Digital Tutor")
+    st.title("European Capital Markets Law – Digital Mentor")
 
     STUDENT_PIN = st.secrets.get("STUDENT_PIN")
     TUTOR_PIN   = st.secrets.get("TUTOR_PIN")
