@@ -1,7 +1,165 @@
 # streamlit_app.py
 # Minimal UI to exercise both engines using the booklet index from the private repo.
 
+
+import requests  # needed for logging
+import json, time, os  # time is used by your existing call sites
 import streamlit as st
+
+# === PATCH 1: extra imports ===
+import os, json, time
+import requests  # for Gist logging
+
+# === PATCH 1: sticky footer ===
+def render_sticky_footer():
+    import streamlit as st
+    st.markdown(
+        """
+<style>
+/* Reserve space so main content isn't hidden behind the footer */
+.stApp { padding-bottom: 64px; }
+section.main > div { padding-bottom: 64px; }
+/* Sticky footer */
+.eucapml-fixed-footer {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  z-index: 99999;
+  background: #0e1117; color: rgba(255,255,255,.92);
+  border-top: 1px solid rgba(255,255,255,.12);
+  padding: .70rem 1rem;
+  font-size: .92rem; line-height: 1.35rem;
+}
+.eucapml-fixed-footer .inner {
+  max-width: 1200px; margin: 0 auto;
+  display: flex; gap: .75rem; align-items: center;
+  flex-wrap: wrap;
+}
+.eucapml-fixed-footer .spacer { flex: 1; }
+.eucapml-fixed-footer a.btn {
+  display: inline-block;
+  background: #1a73e8; color: #fff !important;
+  padding: .35rem .75rem; border-radius: 6px; font-weight: 600;
+  text-decoration: none;
+}
+.eucapml-fixed-footer a.btn:hover { background: #165fc1; }
+</style>
+<div class="eucapml-fixed-footer" role="contentinfo" aria-label="Legal note and privacy">
+  <div class="inner">
+    <span>
+      ℹ️ <strong>Notes</strong>:
+      (c) 2026 by Stephan Balthasar. This app uses AI & LLMs. Output may be inaccurate, and no liability is accepted.
+      App feedback is no indicator for grades in a real examination.
+    </span>
+    <span class="spacer"></span>
+    <a class="btn" href="?show_privacy=1"tice
+    </a>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+# === PATCH 1: load the notice (Markdown file) ===
+def load_privacy_notice():
+    file_path = os.path.join("assets", "Notice.md")
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return "# Privacy Notice\n\nThe notice could not be loaded. Please contact the administrator."
+
+# === PATCH 1: privacy overlay (opens via ?show_privacy=1) ===
+def _get_query_params():
+    import streamlit as st
+    try:
+        return st.experimental_get_query_params()  # legacy API
+    except Exception:
+        try:
+            return dict(st.query_params)  # newer API
+        except Exception:
+            return {}
+
+def render_privacy_overlay_if_requested():
+    import streamlit as st
+    qp = _get_query_params()
+    val = str(qp.get("show_privacy", ["0"])[0]).lower()
+    show = val in ("1", "true", "yes", "y", "on")
+    if not show:
+        return
+    notice_md = load_privacy_notice()
+    st.markdown(
+        """
+<style>
+body { overflow: hidden; } /* prevent background scroll */
+.eucapml-privacy-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  z-index: 99998; display: flex; justify-content: center; align-items: center;
+}
+.eucapml-privacy-container {
+  position: relative; z-index: 99999;
+  width: 90%; max-width: 900px; padding: 1.25rem 1.5rem;
+  background: #ffffff; color: #0e1117;
+  border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  max-height: 90vh; overflow-y: auto;
+}
+.eucapml-privacy-close a { color: #1368e8; font-weight: 600; text-decoration: none; cursor: pointer; }
+.eucapml-privacy-close a:hover { text-decoration: underline; }
+</style>
+<div class="eucapml-privacy-backdrop" id="privacyBackdrop">
+  <div class="eucapml-privacy-container">
+    <div class="eucapml-privacy-close" style="text-align:right;">
+      <a id="closeLink">✕ Close</a>
+    </div>
+    <div>
+      ## Privacy Notice
+""",
+        unsafe_allow_html=True,
+    )
+    st.markdown(notice_md)
+    st.markdown(
+        """
+    </div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    render_sticky_footer()
+    st.stop()
+
+# --- minimalist logger: uses only LOG_GIST_TOKEN + GIST_ID ---
+def update_gist(new_entry):
+    """
+    Append [timestamp, event, role] to logs.csv in a GitHub Gist.
+    Uses a dedicated token only: st.secrets['LOG_GIST_TOKEN'].
+    If not configured, this function silently no-ops.
+    """
+    import streamlit as st
+
+    token = st.secrets.get("LOG_GIST_TOKEN")
+    gist_id = st.secrets.get("GIST_ID")
+    if not token or not gist_id:
+        return  # no-op if logging is not configured
+
+    url = f"https://api.github.com/gists/{gist_id}"
+    headers = {"Authorization": f"token {token}"}
+
+    # 1) Read current logs.csv (or start with the header)
+    try:
+        r = requests.get(url, headers=headers, timeout=8)
+        files = r.json().get("files", {}) if r.status_code == 200 else {}
+        content = files.get("logs.csv", {}).get("content", "")
+        lines = [ln for ln in content.splitlines() if ln.strip()] or ["timestamp,event,role"]
+    except Exception:
+        lines = ["timestamp,event,role"]
+
+    # 2) Append the new entry and push
+    lines.append(",".join(new_entry))
+    payload = {"files": {"logs.csv": {"content": "\n".join(lines)}}}
+    try:
+        requests.patch(url, headers=headers, data=json.dumps(payload), timeout=8)
+    except Exception:
+        # Best-effort logging — ignore network/api errors to keep UX smooth
+        pass
 
 # --- Load booklet index (server-side; users never see this file) ---
 from app.bootstrap_booklet import load_booklet_index
@@ -16,6 +174,52 @@ from mentor.engines.feedback_engine import FeedbackEngine
 from mentor.llm.groq import GroqClient
 
 st.set_page_config(page_title="EUCapML Mentor", page_icon="⚖️", layout="wide")
+
+# === PATCH 2: always-on footer and optional overlay ===
+render_privacy_overlay_if_requested()
+render_sticky_footer()
+
+# === PATCH 3: session flags ===
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "role" not in st.session_state:
+    st.session_state.role = None
+
+# === PATCH 3: login gate ===
+if not st.session_state.authenticated:
+    st.title("European Capital Markets Law – Digital Tutor")
+
+    STUDENT_PIN = st.secrets.get("STUDENT_PIN")
+    TUTOR_PIN   = st.secrets.get("TUTOR_PIN")
+
+    pin = st.text_input("Enter password", type="password")
+
+    # Show the consent checkbox only after a correct PIN is typed
+    role_detected = None
+    if pin and pin == STUDENT_PIN:
+        role_detected = "student"
+        st.success("Password accepted.")
+    elif pin and pin == TUTOR_PIN:
+        role_detected = "tutor"
+        st.success("PIN accepted (tutor).")
+    elif pin:
+        st.error("Incorrect PIN. Please try again.")
+
+    if role_detected:
+        agree = st.checkbox(
+            "I confirm I have read the AI & Privacy Notice (see the blue footer button)."
+        )
+        st.caption("You must accept to continue.")
+        if st.button("Continue", type="primary", disabled=not agree):
+            st.session_state.authenticated = True
+            st.session_state.role = role_detected
+            if role_detected == "student":
+                # log student login
+                update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
+            st.rerun()
+
+    # Stop rendering the rest of the app until authenticated
+    st.stop()
 
 # Optional tiny banner (remove once you’re confident)
 st.caption(f"📖 Booklet loaded — {len(INDEX['chapters'])} chapters, {len(INDEX['paragraphs'])} numbered paragraphs.")
@@ -106,6 +310,8 @@ with tab_feedback:
         model_slice = sections[q_index] if (0 <= q_index < len(sections)) else ""
 
         if st.button("Generate plan", type="primary"):
+            if st.session_state.get("role") == "student":
+                update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "PLAN", "student"])
             with st.spinner("Thinking..."):
                 plan = feedback_engine.plan_answer(
                     case_text=sel_case.get("description", ""),
@@ -139,6 +345,8 @@ with tab_feedback:
 
         # on evaluate
         if st.button("Evaluate my answer", type="primary"):
+            if st.session_state.get("role") == "student":
+                update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "EVALUATE", "student"])
             sections = sel_case.get("model_answer_sections") or []
             auto_slice = sections[q_index] if (0 <= q_index < len(sections)) else None
             effective_model = (auto_slice or "").strip()
@@ -244,6 +452,8 @@ with tab_chat:
     st.subheader("Tutor chat (booklet‑grounded)")
     q = st.text_area("Your question", height=140, placeholder="e.g., What is 'inside information' under MAR?")
     if st.button("Ask", key="chat_btn"):
+        if st.session_state.get("role") == "student":
+            update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "CHAT", "student"])
         if not q.strip():
             st.warning("Please enter a question.")
         else:
