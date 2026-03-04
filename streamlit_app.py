@@ -381,22 +381,43 @@ model = model_id
 
 # 3) Provide a small adapter so existing engines don't need to know about `provider`.
 class _ProviderBoundLLM:
-    """Adapter: binds a chosen provider; engines call .complete(...) the same way as before."""
+    """
+    Adapter that binds a chosen provider. Engines can call .chat(...) or .complete(...).
+    Both route to LLMProvider.complete(...) under the hood.
+    """
     def __init__(self, provider_client: LLMProvider, provider_name: str):
         self._prov = provider_client
         self.provider = provider_name
 
-    # Maintain the same signature your engines expect
-    def complete(self, messages, model=None, temperature=0.2, max_tokens=1200, top_p=0.9):
+    # Core call used by our adapter
+    def complete(self, messages, model=None, temperature=0.2, max_tokens=1200, top_p=0.9, **kwargs):
         return self._prov.complete(
             messages,
-            provider=self.provider,         # bind the provider chosen in the sidebar
-            model=model,                    # pass through the model string from the sidebar
+            provider=self.provider,
+            model=model,
             temperature=temperature,
             max_tokens=max_tokens,
             top_p=top_p,
-            allow_fallback=True             # if selected provider isn't available, use default (Qwen/OpenRouter)
+            allow_fallback=True,
         )
+
+    # ✅ Some engines use llm.chat(...). Provide a direct alias.
+    def chat(self, messages, model=None, temperature=0.2, max_tokens=1200, top_p=0.9, **kwargs):
+        return self.complete(
+            messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            **kwargs,
+        )
+
+    # (Optional) If any code calls streaming variants later, these no-op to non-streaming.
+    def chat_stream(self, *args, **kwargs):
+        return self.chat(*args, **kwargs)
+
+    def complete_stream(self, *args, **kwargs):
+        return self.complete(*args, **kwargs)
 
     @property
     def is_configured(self) -> bool:
