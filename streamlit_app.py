@@ -5,6 +5,7 @@
 import json, time, os  # time is used by your existing call sites
 import requests  
 import streamlit as st
+from mentor.prompts import build_tutor_chat_prompt_booklet_only
 
 # === PATCH 1: sticky footer ===
 def render_sticky_footer():
@@ -414,5 +415,19 @@ with tab_chat:
             st.warning("Please enter a question.")
         else:
             with st.spinner("Thinking..."):
-                reply = chat_engine.answer(q, model=model, temperature=temp, max_tokens=800)
+                # AFTER
+                best = chap_retriever.retrieve_best(q)  # uses keyword overlap or embeddings if configured
+                ch_title = None
+                excerpt  = ""
+                
+                if isinstance(best, dict):
+                    ch_title = best.get("title") or f"Chapter {best.get('chapter_num', '—')}"
+                    ch_text  = (best.get("text") or "").strip()
+                    excerpt  = ch_text[:3200] if ch_text else ""
+                
+                prompt = build_tutor_chat_prompt_booklet_only(excerpt, q, ch_title)
+                
+                # Keep chat conservative to avoid drift; prefer 70B at temp 0.0 for legal topics
+                chosen_model = "llama-3.3-70b-versatile" if model != "llama-3.3-70b-versatile" else model
+                reply = chat_engine.answer(prompt, model=chosen_model, temperature=0.0, max_tokens=800)
             st.markdown(reply)
