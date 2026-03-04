@@ -101,14 +101,14 @@ def update_gist(new_entry):
     try:
         r = requests.get(url, headers=headers, timeout=8)
         files = r.json().get("files", {}) if r.status_code == 200 else {}
-        content = files.get(" EUCapML_Mentor_Log.csv", {}).get("content", "")
+        content = files.get("EUCapML_Mentor_Log.csv", {}).get("content", "")
         lines = [ln for ln in content.splitlines() if ln.strip()] or ["timestamp,event,role"]
     except Exception:
         lines = ["timestamp,event,role"]
 
     # 2) Append the new entry and push
     lines.append(",".join(new_entry))
-    payload = {"files": {" EUCapML_Mentor_Log.csv": {"content": "\n".join(lines)}}}
+    payload = {"files": {"EUCapML_Mentor_Log.csv": {"content": "\n".join(lines)}}}
     try:
         requests.patch(url, headers=headers, data=json.dumps(payload), timeout=8)
     except Exception:
