@@ -58,8 +58,8 @@ eucapml-mentor/
     │   └── chat_engine.py       # RAG-based tutor
     │
     ├── rag/
+    │   ├── __init__.py
     │   ├── index.py             # Build and store booklet embeddings
-    │   ├── retrieve.py          # Query → relevant snippets
     │   └── filters.py           # Keyword & heuristic narrowing
     │
     ├── llm/
@@ -68,6 +68,7 @@ eucapml-mentor/
     │
     ├── booklet/
     │   ├── parse.py             # Parse DOCX booklet into chunks
+    │   ├── retrieve.py          # Query → relevant snippets  
     │   └── anchors.py           # Detect paras, cases, sections
     │
     ├── core.py                  # Shared utilities
