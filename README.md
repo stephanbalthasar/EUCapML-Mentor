@@ -210,6 +210,17 @@ LLM client mock responses
 ### **🚀 Run the App**
 In development:
 Shellstreamlit run streamlit_app.py
+Secrets needed:
+BOOKLET_REPO = ""
+BOOKLET_REF = ""
+BOOKLET_PATH = ""
+CASES_PATH = ""
+GITHUB_TOKEN = ""
+GROQ_API_KEY = ""
+LOG_GIST_TOKEN = ""
+GIST_ID = ""
+STUDENT_PIN = ""
+TUTOR_PIN = ""
 
 ### **📜 License**
 TBD.
