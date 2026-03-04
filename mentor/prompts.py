@@ -60,7 +60,8 @@ def build_plan_messages(case_text: str,
         "You are a tutor helping a student plan an exam answer in EU/German capital markets law.\n"
         f"Produce a lean, issue‑first outline (6–9 bullets), ≤ {max_words} words. "
         "No citations. No paragraph numbers. No web sources.\n"
-        "Do NOT disclose or quote the model answer text. If the correct direction differs from the student's likely path, steer it quietly in the plan."
+        "Do NOT propose conclusions, only list topics to cover."
+        "Do NOT disclose or quote the model answer text. If the correct direction differs from the student's likely path, steer it quietly in the plan."      
     )
     blocks = [
         f"CASE DESCRIPTION:\n\"\"\"{(case_text or '').strip()}\"\"\"",
