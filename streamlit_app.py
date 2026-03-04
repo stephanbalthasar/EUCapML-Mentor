@@ -5,7 +5,6 @@
 import json, time, os  # time is used by your existing call sites
 import requests  
 import streamlit as st
-from mentor.prompts import build_tutor_chat_prompt_booklet_only
 
 # === PATCH 1: sticky footer ===
 def render_sticky_footer():
@@ -415,6 +414,5 @@ with tab_chat:
             st.warning("Please enter a question.")
         else:
             with st.spinner("Thinking..."):
-                chosen_model = "llama-3.3-70b-versatile" if model != "llama-3.3-70b-versatile" else model
-                reply = chat_engine.answer(q, model=chosen_model, temperature=0.0, max_tokens=800)
+                reply = chat_engine.answer(q, model=model, temperature=temp, max_tokens=800)
             st.markdown(reply)
