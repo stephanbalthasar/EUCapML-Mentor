@@ -1,27 +1,36 @@
+# mentor/llm/llm_registry.py
 from dataclasses import dataclass
 from typing import Dict, List
 
 @dataclass(frozen=True)
 class ModelInfo:
-    provider: str         # "openrouter" or "groq"
-    model_id: str         # e.g., "qwen/qwen-3-instruct" or "llama-3.3-70b-versatile"
-    label: str            # UI label
-    notes: str = ""       # Shown in UI (optional)
+    provider: str      # "openrouter" | "groq"
+    model_id: str      # e.g., "qwen/qwen3-30b-a3b:free"
+    label: str         # UI label
+    notes: str = ""    # Optional UI help
 
 def get_model_registry() -> Dict[str, List[ModelInfo]]:
-    """Registry grouped by provider."""
+    """
+    Provider -> [models]. Keep these slugs valid for 2026.
+    """
     return {
         "openrouter": [
-            ModelInfo("openrouter", "qwen/qwen-3-instruct", "Qwen 3 Instruct (default)", "Low hallucination; good for legal tutoring"),
-            ModelInfo("openrouter", "qwen/qwen-2.5-instruct", "Qwen 2.5 Instruct", "Reliable and fast"),
-            # You can add more OpenRouter models here
+            # Zero-cost, rotates across available free endpoints
+            ModelInfo("openrouter", "openrouter/free", "OpenRouter Free (auto)", "Zero-cost; rotates across free models"),
+            # Qwen 3 free variants (valid slugs)
+            ModelInfo("openrouter", "qwen/qwen3-30b-a3b:free", "Qwen3‑30B‑A3B (free)", "Reliable free Qwen3 variant"),
+            ModelInfo("openrouter", "qwen/qwen3-235b-a22b:free", "Qwen3‑235B‑A22B (free)", "Stronger; higher latency"),
         ],
         "groq": [
-            ModelInfo("groq", "llama-3.3-70b-versatile", "Llama 3.3 70B (Groq)", "Very fast; older knowledge cutoffs"),
-            ModelInfo("groq", "llama-3.1-8b-instant", "Llama 3.1 8B Instant (Groq)", "Ultra-fast; use for testing only"),
-        ]
+            # Your existing Groq models
+            ModelInfo("groq", "llama-3.3-70b-versatile", "Llama 3.3 70B (Groq)", "Fast; older cutoff"),
+            ModelInfo("groq", "llama-3.1-8b-instant", "Llama 3.1 8B Instant (Groq)", "Ultra-fast; testing"),
+        ],
     }
 
 def get_default_model() -> ModelInfo:
-    # Keep Qwen 3 Instruct as default
-    return ModelInfo("openrouter", "qwen/qwen-3-instruct", "Qwen 3 Instruct (default)")
+    """
+    Default to the OpenRouter Free router so the app works on a €0 budget.
+    You can override via OPENROUTER_DEFAULT_MODEL in secrets.
+    """
+    return ModelInfo("openrouter", "openrouter/free", "OpenRouter Free (default)")
