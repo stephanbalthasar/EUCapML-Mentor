@@ -2,43 +2,32 @@
 # Minimal UI to exercise both engines using the booklet index from the private repo.
 
 
-import requests  # needed for logging
 import json, time, os  # time is used by your existing call sites
+import requests  
 import streamlit as st
-
-# === PATCH 1: extra imports ===
-import os, json, time
-import requests  # for Gist logging
 
 # === PATCH 1: sticky footer ===
 def render_sticky_footer():
-    import streamlit as st
     st.markdown(
         """
 <style>
-/* Reserve space so main content isn't hidden behind the footer */
 .stApp { padding-bottom: 64px; }
 section.main > div { padding-bottom: 64px; }
-/* Sticky footer */
 .eucapml-fixed-footer {
   position: fixed; left: 0; right: 0; bottom: 0;
   z-index: 99999;
   background: #0e1117; color: rgba(255,255,255,.92);
   border-top: 1px solid rgba(255,255,255,.12);
-  padding: .70rem 1rem;
-  font-size: .92rem; line-height: 1.35rem;
+  padding: .70rem 1rem; font-size: .92rem; line-height: 1.35rem;
 }
 .eucapml-fixed-footer .inner {
   max-width: 1200px; margin: 0 auto;
-  display: flex; gap: .75rem; align-items: center;
-  flex-wrap: wrap;
+  display: flex; gap: .75rem; align-items: center; flex-wrap: wrap;
 }
 .eucapml-fixed-footer .spacer { flex: 1; }
 .eucapml-fixed-footer a.btn {
-  display: inline-block;
-  background: #1a73e8; color: #fff !important;
-  padding: .35rem .75rem; border-radius: 6px; font-weight: 600;
-  text-decoration: none;
+  display: inline-block; background: #1a73e8; color: #fff !important;
+  padding: .35rem .75rem; border-radius: 6px; font-weight: 600; text-decoration: none;
 }
 .eucapml-fixed-footer a.btn:hover { background: #165fc1; }
 </style>
@@ -50,8 +39,7 @@ section.main > div { padding-bottom: 64px; }
       App feedback is no indicator for grades in a real examination.
     </span>
     <span class="spacer"></span>
-    <a class="btn" href="?show_privacy=1"tice
-    </a>
+    <a class="btn" href="?show_privacy=1" title="View AI & Privacy Notice">AI & Privacy Notice</a>
   </div>
 </div>
 """,
@@ -79,50 +67,16 @@ def _get_query_params():
             return {}
 
 def render_privacy_overlay_if_requested():
-    import streamlit as st
     qp = _get_query_params()
     val = str(qp.get("show_privacy", ["0"])[0]).lower()
     show = val in ("1", "true", "yes", "y", "on")
     if not show:
         return
+
     notice_md = load_privacy_notice()
-    st.markdown(
-        """
-<style>
-body { overflow: hidden; } /* prevent background scroll */
-.eucapml-privacy-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,.5);
-  z-index: 99998; display: flex; justify-content: center; align-items: center;
-}
-.eucapml-privacy-container {
-  position: relative; z-index: 99999;
-  width: 90%; max-width: 900px; padding: 1.25rem 1.5rem;
-  background: #ffffff; color: #0e1117;
-  border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
-  max-height: 90vh; overflow-y: auto;
-}
-.eucapml-privacy-close a { color: #1368e8; font-weight: 600; text-decoration: none; cursor: pointer; }
-.eucapml-privacy-close a:hover { text-decoration: underline; }
-</style>
-<div class="eucapml-privacy-backdrop" id="privacyBackdrop">
-  <div class="eucapml-privacy-container">
-    <div class="eucapml-privacy-close" style="text-align:right;">
-      <a id="closeLink">✕ Close</a>
-    </div>
-    <div>
-      ## Privacy Notice
-""",
-        unsafe_allow_html=True,
-    )
+    st.title("AI & Privacy Notice")
     st.markdown(notice_md)
-    st.markdown(
-        """
-    </div>
-  </div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
+    st.markdown("[← Back to the app](?)")
     render_sticky_footer()
     st.stop()
 
@@ -410,6 +364,8 @@ with tab_feedback:
             # 6. FOLLOW-UP CHAT
             # -----------------------------
             st.markdown("## Follow-up discussion")
+
+            st.session_state.setdefault("chat_history", [])
 
             # show history
             for role, msg in st.session_state["chat_history"]:
