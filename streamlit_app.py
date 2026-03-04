@@ -6,7 +6,97 @@ import json, time, os  # time is used by your existing call sites
 import requests  
 import streamlit as st
 
-# === PATCH 1: sticky footer ===
+# === HELPERS ===
+# --- HERO (flat navy) ---
+def render_flat_navy_hero(
+    title: str = "European Capital Markets Law - Digital Mentor",
+    subtitle: str = "Master your Capital Markets Law Class with Confidence",
+    logo_path: str | None = "assets/logo.png",  # set to None if you have no logo
+):
+    import streamlit as st
+
+    st.markdown(
+        """
+        <style>
+            /* Constrain main content width a bit for a premium feel (can tweak later) */
+            .main > div { max-width: 1120px; margin: 0 auto; }
+
+            /* Flat navy hero container */
+            .sb-hero {
+                background: #0B1F3B;           /* flat navy */
+                color: #ffffff;
+                border-radius: 14px;
+                padding: 24px 22px;
+                box-shadow: 0 6px 24px rgba(1,20,40,0.25);
+                display: flex;
+                gap: 18px;
+                align-items: center;
+            }
+            .sb-hero .sb-hero-text h1 {
+                font-weight: 700;
+                margin: 0 0 6px 0;
+                font-size: 2.0rem;             /* we can refine sizes later */
+                line-height: 1.2;
+            }
+            .sb-hero .sb-hero-text p {
+                margin: 0;
+                font-size: 1.05rem;
+                opacity: 0.92;
+            }
+            .sb-hero .sb-hero-strap {
+                margin-top: 6px;
+                font-size: 0.85rem;
+                opacity: 0.80;
+            }
+            .sb-hero .sb-logo {
+                flex: 0 0 auto;
+                border-radius: 10px;
+                overflow: hidden;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 120px; height: 120px;
+                background: rgba(255,255,255,0.06);
+                border: 1px solid rgba(255,255,255,0.10);
+            }
+            @media (max-width: 800px) {
+                .sb-hero { flex-direction: column; align-items: flex-start; }
+                .sb-hero .sb-logo { width: 90px; height: 90px; }
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Layout
+    cols = st.columns([1, 3], gap="small")
+    with cols[0]:
+        if logo_path:
+            try:
+                st.markdown('<div class="sb-logo">', unsafe_allow_html=True)
+                st.image(logo_path, use_column_width=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            except Exception:
+                st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+
+    with cols[1]:
+        st.markdown('<div class="sb-hero">', unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="sb-hero-text">
+                <h1>{title}</h1>
+                <p>{subtitle}</p>
+                <div class="sb-hero-strap">Grounded in the course booklet and public sources (EUR‑Lex, CURIA, ESMA, BaFin).</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("")  # small spacing after hero
+
 def render_sticky_footer():
     st.markdown(
         """
@@ -141,6 +231,14 @@ if "role" not in st.session_state:
 
 # === PATCH 3: login gate ===
 if not st.session_state.authenticated:
+    # === LOGIN GATE ===
+if not st.session_state.authenticated:
+    # Flat navy hero (no CTAs here)
+    render_flat_navy_hero(
+        title="European Capital Markets Law - Digital Mentor",
+        subtitle="Master your Capital Markets Law Class with Confidence",
+        logo_path="assets/logo.png"  # or None if you don’t want a logo
+    )
     st.title("European Capital Markets Law – Digital Mentor")
 
     STUDENT_PIN = st.secrets.get("STUDENT_PIN")
