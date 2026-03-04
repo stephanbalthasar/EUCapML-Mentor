@@ -93,13 +93,13 @@ def render_sticky_footer():
             z-index: 9999;
           }
           .sb-sticky-foot .sb-inner{
-            max-width: 1120px;      /* keep in sync with your page cap (1080–1120px) */
+            max-width: 1120px;      /* keep in sync with your global page cap */
             margin: 0 auto;
             display: flex; align-items: center;
             gap: 12px; padding: 8px 12px;
-            white-space: nowrap;    /* keep it on a single visual line */
+            white-space: nowrap;    /* keep it on one visual line */
           }
-          /* Left-side button */
+          /* Left-side "button" (actually a link) */
           .sb-foot-btn{
             display: inline-block;
             background: #123B7A; color: #fff !important;
@@ -108,8 +108,9 @@ def render_sticky_footer():
             text-decoration: none; font-weight: 600; font-size: 0.9rem;
           }
           .sb-foot-btn:hover{ background:#0F2D5A; border-color:#0F2D5A; }
+          .sb-foot-btn:focus-visible{ outline: 2px solid #1464A5; outline-offset: 2px; }
 
-          /* Right-side info text (truncates gracefully on small screens) */
+          /* Right-side info text (truncates on small screens) */
           .sb-footnote{
             color: #5B677A; font-size: 0.9rem;
             overflow: hidden; text-overflow: ellipsis;
@@ -121,7 +122,7 @@ def render_sticky_footer():
 
         <div class="sb-sticky-foot">
           <div class="sb-inner">
-            ?show_privacy=1AI &amp; Privacy Notice</a>
+            <a class="sb-foot-btn" href="?show_privacy=1">AI &amp; Privacy Notice</a>
             <div class="sb-footnote">
               © 2026 Stephan Balthasar · This app uses AI &amp; LLMs; outputs may be inaccurate; no liability.
               Feedback is not a grade predictor.
