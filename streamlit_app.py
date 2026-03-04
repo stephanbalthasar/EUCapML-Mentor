@@ -286,40 +286,49 @@ if not st.session_state.authenticated:
     st.stop()
 
 # Hint chip: show only when the sidebar is collapsed (authenticated pages)
+# Hint chip: show only when the sidebar is collapsed (authenticated pages)
 st.markdown(
     """
     <style>
+      /* Keep these in sync with your global width cap */
       :root{
-        --content-max: 1120px;  /* keep in sync with your global cap */
+        --content-max: 1120px;  /* set to your chosen cap: 1080–1120px */
         --page-pad: 12px;
       }
-      /* Default: hide the chip (we'll show it when sidebar is collapsed) */
+
+      /* Default: hide the hint */
       .sb-sidebar-hint{ display: none; }
 
-      /* When the sidebar is collapsed, show the chip */
-      [data-testid="stSidebar"][aria-expanded="false"] ~ div .sb-sidebar-hint{
+      /* Show hint when sidebar is collapsed (robust selector) */
+      [data-testid="stSidebar"][aria-expanded="false"] ~ * .sb-sidebar-hint{
         display: inline-flex;
       }
 
+      /* Hide hint when sidebar is visible */
+      [data-testid="stSidebar"][aria-expanded="true"] ~ * .sb-sidebar-hint{
+        display: none;
+      }
+
+      /* Hint styling + alignment with main content left edge */
       .sb-sidebar-hint{
         position: fixed;
         top: 10px;
-        /* Align with your content's left edge */
         left: max(var(--page-pad), calc((100vw - var(--content-max))/2 + 8px));
         z-index: 9998;
         background: #123B7A; color: #fff;
         padding: 4px 10px; border-radius: 999px;
         font-size: 0.86rem; font-weight: 600;
         box-shadow: 0 2px 8px rgba(5,16,28,0.15);
-        cursor: default;
-        user-select: none;
+        user-select: none; cursor: default;
+        white-space: nowrap;
       }
 
-      /* Hide the chip when the sidebar is visible */
-      [data-testid="stSidebar"][aria-expanded="true"] ~ div .sb-sidebar-hint{
-        display: none;
+      /* Small screens: pin a little closer to the edge */
+      @media (max-width: 900px){
+        .sb-sidebar-hint{ left: 10px; }
       }
     </style>
+
     <div class="sb-sidebar-hint">◀ Show sidebar</div>
     """,
     unsafe_allow_html=True
