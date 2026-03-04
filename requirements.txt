@@ -6,3 +6,4 @@ numpy>=1.26
 scikit-learn>=1.4
 sentence-transformers>=2.7
 pandas>=2.2
+python-docx
