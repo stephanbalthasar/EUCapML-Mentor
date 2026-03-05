@@ -663,6 +663,7 @@ with tab_feedback:
                     on_ask=on_ask_followup,
                     clear_label="🗑️ Clear follow-up thread",
                 )
+
 # --- Tutor chat (separate, uncluttered) ---
 # --- General Tutor Chat (conversation mode + booklet grounding) ---
 with tab_chat:
@@ -688,7 +689,7 @@ with tab_chat:
                 composed_q,
                 model=model,
                 temperature=temp,
-                max_tokens=700,  # was 800; small reduction
+                max_tokens=700,  # was 800; small reduction to ease 429s
             )
         except Exception as e:
             # Show a friendly, actionable message in the transcript
@@ -700,3 +701,12 @@ with tab_chat:
                 )
             # Fallback general message
             return "Sorry—there was a temporary issue. Please try again in a few seconds."
+
+    # 👉 This call actually renders the chat UI inside the tab
+    render_conversation(
+        state_key="tutor_chat",
+        title="Tutor chat (conversation mode)",
+        placeholder="Ask the tutor…",
+        on_ask=on_ask_tutor,
+        clear_label="🗑️ Clear chat",
+    )
