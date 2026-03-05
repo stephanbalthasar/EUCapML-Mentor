@@ -383,7 +383,7 @@ if not st.session_state.authenticated:
 
     if role_detected:
         agree = st.checkbox(
-            "I confirm I have read the AI & Privacy Notice (see the blue footer button)."
+            "I confirm I took note of the AI & Privacy Notice (see the blue button in the footer)."
         )
         st.caption("You must accept to continue.")
         if st.button("Continue", type="primary", disabled=not agree):
