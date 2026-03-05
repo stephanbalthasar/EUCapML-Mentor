@@ -69,4 +69,3 @@ jobs:
           name: booklet_index.json
           path: private-content/artifacts/booklet_index.json
           if-no-files-found: warn
-``
