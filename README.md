@@ -64,10 +64,10 @@ eucapml-mentor/
     │
     ├── llm/
     │   ├── __init__.py          
-    │   ├── groq.py            # Model-agnostic LLM interface
-    │   ├── openrouter.py            # Model-agnostic LLM interface
-    │   ├── llm_registry.py            # Model-agnostic LLM interface
-    │   └── llm_provider.py              # Groq implementation
+    │   ├── groq.py            
+    │   ├── openrouter.py            
+    │   ├── placeholder1.py          
+    │   └── placeholder2.py           
     │
     ├── booklet/
     │   ├── parse.py             # Parse DOCX booklet into chunks
