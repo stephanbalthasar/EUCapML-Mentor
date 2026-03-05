@@ -1,4 +1,4 @@
-name: Build booklet index (run attached script; copy JSON into private assets)
+name: Build booklet index (run attached script; write to artifacts/)
 
 on:
   workflow_dispatch: {}
@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: stephanbalthasar/EUCapML-Mentor-Content
-          token: ${{ secrets.REPO_XPAT }}      # <-- your existing secret
+          token: ${{ secrets.REPO_XPAT }}   # existing secret in your public repo
           path: private-content
 
       - name: Set up Python
@@ -36,8 +36,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install python-docx
 
-      # Run your script UNCHANGED.
-      # We "cd" into the private repo so its default paths (assets/... and artifacts/...) match.
+      # Run your script UNCHANGED inside the private repo,
+      # so its default relative paths (assets/... and artifacts/...) resolve there.
       - name: Run build_booklet_index.py
         working-directory: private-content
         shell: bash
@@ -45,37 +45,25 @@ jobs:
           set -euo pipefail
           python ../mentor/booklet/build_booklet_index.py
 
-      # Copy the generated JSON from artifacts/ to assets/ as requested.
-      - name: Copy JSON into assets/
-        working-directory: private-content
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p assets
-          if [ -f artifacts/booklet_index.json ]; then
-            cp artifacts/booklet_index.json assets/booklet_index.json
-          else
-            echo "Expected artifacts/booklet_index.json not found"; exit 1
-          fi
-
-      - name: Commit and push to private repo (only if assets/booklet_index.json changed)
+      # Commit only artifacts/booklet_index.json if it changed.
+      - name: Commit and push to private repo (only if artifacts changed)
         working-directory: private-content
         shell: bash
         run: |
           set -euo pipefail
 
-          # Figure out the default branch of the private repo
+          # Determine default branch of the private repo
           DEFAULT_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
           if [ -z "$DEFAULT_BRANCH" ]; then DEFAULT_BRANCH="main"; fi
 
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add assets/booklet_index.json || true
+          git add artifacts/booklet_index.json || true
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "Update assets/booklet_index.json [skip ci]"
+            git commit -m "Update artifacts/booklet_index.json [skip ci]"
             git push origin HEAD:"$DEFAULT_BRANCH"
           fi
 
@@ -84,5 +72,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: booklet_index.json
-          path: private-content/assets/booklet_index.json
+          path: private-content/artifacts/booklet_index.json
           if-no-files-found: warn
