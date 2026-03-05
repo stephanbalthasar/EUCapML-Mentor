@@ -1,64 +1,77 @@
-name: Build booklet index (public → private artifacts)
+name: Build booklet index (from private DOCX)
 
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 4 * * 1'  # Mondays 04:00 UTC
+  # Manual run
+  workflow_dispatch: {}
+  # Optional: re-run when you change the workflow or the Python script in this repo
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/build-booklet-index.yml"
+      - "mentor/booklet/build_booklet_index.py"
 
+# Permissions block affects only GITHUB_TOKEN; we push with your PAT secret.
 permissions:
   contents: read
 
 jobs:
-  index-booklet:
+  build-index:
+    name: Parse DOCX and update JSON in private repo
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout this (public) repo
+      - name: Checkout public repo (this repo)
         uses: actions/checkout@v4
 
-      - name: Checkout private repo (EUCapML-Mentor-Content)
+      - name: Checkout private content repo
         uses: actions/checkout@v4
         with:
           repository: stephanbalthasar/EUCapML-Mentor-Content
-          ref: main
-          path: private-src
-          token: ${{ secrets.REPO_XPAT }}
+          token: ${{ secrets.REPO_XPAT }}      # <-- uses your provided secret name
+          path: private-content
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install python-docx
 
-      - name: Build JSON from DOCX
+      - name: Generate index JSON from DOCX
+        shell: bash
         run: |
+          set -euo pipefail
           python mentor/booklet/build_booklet_index.py \
-            --src "private-src/assets/booklet.docx" \
-            --out "private-src/artifacts/booklet_index.json" \
-            --verbose
+            --input private-content/assets/booklet.docx \
+            --output private-content/artifacts/booklet_index.json
 
-      - name: Commit JSON into private repo (artifacts/)
-        working-directory: private-src
-        env:
-          PAT: ${{ secrets.REPO_XPAT }}
+      - name: Commit and push JSON to private repo (only if changed)
+        working-directory: private-content
+        shell: bash
         run: |
-          # Avoid auth confusion when pushing cross-repo
-          git config --unset-all http.https://github.com/.extraheader || true
+          set -euo pipefail
 
+          # Configure author
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Force-add in case artifacts/ is ignored
-          git add -f artifacts/booklet_index.json
-
-          # Commit only if content changed
-          if git diff --cached --quiet -- artifacts/booklet_index.json; then
-            echo "No content change after staging."
-            exit 0
+          # Stage the JSON and commit only if there are changes
+          git add artifacts/booklet_index.json || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Update artifacts/booklet_index.json [skip ci]"
+            # Adjust branch if your private repo uses a different default branch
+            git push origin HEAD:main
           fi
 
-          git commit -m "ci: update booklet_index.json"
-          git push "https://x-access-token:${PAT}@github.com/stephanbalthasar/EUCapML-Mentor-Content.git" HEAD:main
+      # Optional: attach the JSON to the workflow run for quick inspection
+      - name: Upload workflow artifact (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: booklet_index.json
+          path: private-content/artifacts/booklet_index.json
+          if-no-files-found: warn
