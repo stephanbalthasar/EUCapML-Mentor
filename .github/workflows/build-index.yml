@@ -33,7 +33,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install python-docx
 
-      # --- CHANGED: write output directly into the private repo checkout ---
       - name: Build JSON from DOCX
         run: |
           python mentor/booklet/build_booklet_index.py \
@@ -41,23 +40,25 @@ jobs:
             --out "private-src/artifacts/booklet_index.json" \
             --verbose
 
-      # --- CHANGED: no copy; commit the file that already sits in private-src/artifacts/ ---
       - name: Commit JSON into private repo (artifacts/)
         working-directory: private-src
         env:
           PAT: ${{ secrets.REPO_XPAT }}
         run: |
-          # Remove checkout’s extra header before cross-repo push (important)
+          # Avoid auth confusion when pushing cross-repo
           git config --unset-all http.https://github.com/.extraheader || true
 
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add artifacts/booklet_index.json
+          # Force-add in case artifacts/ is ignored
+          git add -f artifacts/booklet_index.json
 
-          if ! git diff --cached --quiet; then
-            git commit -m "ci: update booklet_index.json"
-            git push "https://x-access-token:${PAT}@github.com/stephanbalthasar/EUCapML-Mentor-Content.git" HEAD:main
-          else
-            echo "No JSON changes to commit."
+          # Commit only if content changed
+          if git diff --cached --quiet -- artifacts/booklet_index.json; then
+            echo "No content change after staging."
+            exit 0
           fi
+
+          git commit -m "ci: update booklet_index.json"
+          git push "https://x-access-token:${PAT}@github.com/stephanbalthasar/EUCapML-Mentor-Content.git" HEAD:main
