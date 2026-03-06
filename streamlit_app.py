@@ -8,26 +8,6 @@ import streamlit as st
 
 # === HELPERS ===
 
-def blue_notice(msg: str):
-    """Brand-colored info box for 'PIN accepted' style messages."""
-    st.markdown(
-        f"""
-        <div style="
-            border: 1px solid var(--app-blue);
-            background: rgba(11,31,59,0.06);
-            color: var(--app-blue);
-            padding: 10px 12px; border-radius: 8px; font-weight: 600;
-        ">
-            {msg}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# Call once, right after page_config:
-apply_brand_styles()
-
-
 def render_blue_appbar(title: str = "European Capital Markets Law – Digital Mentor"):
     import streamlit as st
     st.markdown(
@@ -400,8 +380,21 @@ def apply_brand_styles():
         unsafe_allow_html=True,
     )
 
-# Call once, right after st.set_page_config(...)
-apply_brand_styles()
+def blue_notice(msg: str):
+    """Brand-colored info box for 'PIN accepted' style messages."""
+    st.markdown(
+        f"""
+        <div style="
+            border: 1px solid var(--app-blue);
+            background: rgba(11,31,59,0.06);
+            color: var(--app-blue);
+            padding: 10px 12px; border-radius: 8px; font-weight: 600;
+        ">
+            {msg}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # Global width cap for a professional look (applies to all pages)
 st.markdown("""
