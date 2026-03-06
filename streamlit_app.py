@@ -132,7 +132,7 @@ def render_flat_navy_hero(
                 background: #0B1F3B;           /* flat navy */
                 color: #ffffff;
                 border-radius: 14px;
-                padding: 28px 24px;
+                padding: 14px 24px;
                 box-shadow: 0 8px 24px rgba(5,16,28,0.18);
             }
             .sb-hero-inner {
@@ -168,7 +168,10 @@ def render_flat_navy_hero(
     if logo_path:
         try:
             st.markdown('<div class="sb-logo">', unsafe_allow_html=True)
-            st.image(logo_path, use_column_width=True)
+            st.markdown(
+                f'<img src="{logo_path}" style="max-height: 90px; width: auto;" />',
+                unsafe_allow_html=True
+            )
             st.markdown('</div>', unsafe_allow_html=True)
         except Exception:
             pass
