@@ -376,56 +376,67 @@ if not st.session_state.authenticated:
         """
         <style>
         div[data-testid="stSidebar"] { display: none !important; }
-        /* Slightly tighten top/bottom padding while the sidebar is hidden */
         .block-container { padding-top: 0.75rem !important; padding-bottom: 2rem !important; }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    # Keep the blue app bar at the top
-    render_blue_appbar(title="European Capital Markets Law – Digital Mentor")
+    # If you use a blue app bar, keep it here:
+    # render_blue_appbar(title="European Capital Markets Law – Digital Mentor")
 
-    # Two-column landing section: left = hero image, right = title + password
-    left, right = st.columns([1, 1])
-    with left:
-        try:
-            st.image("assets/hero_logo.png", use_column_width=True)
-        except Exception:
-            # Fallback to old logo if hero not found
-            st.image("assets/logo.png", use_column_width=True)
+    with st.form("login_form", clear_on_submit=False):
+        left, right = st.columns([1, 1])
 
-    with right:
-        st.title("European Capital Markets Law – Digital Mentor")
-        STUDENT_PIN = st.secrets.get("STUDENT_PIN")
-        TUTOR_PIN = st.secrets.get("TUTOR_PIN")
-        pin = st.text_input("Enter password", type="password")
+        with left:
+            try:
+                st.image("assets/hero_logo.png", use_column_width=True)
+            except Exception:
+                st.image("assets/logo.png", use_column_width=True)
 
-        # Show the consent checkbox only after a correct PIN is typed
-        role_detected = None
-        if pin and pin == STUDENT_PIN:
-            role_detected = "student"
-            st.success("Password accepted.")
-        elif pin and pin == TUTOR_PIN:
-            role_detected = "tutor"
-            st.success("PIN accepted (tutor).")
-        elif pin:
-            st.error("Incorrect PIN. Please try again.")
+        with right:
+            st.title("European Capital Markets Law – Digital Mentor")
 
-        if role_detected:
-            agree = st.checkbox(
-                "I confirm I took note of the AI & Privacy Notice (see the blue button in the footer)."
-            )
-            st.caption("You must accept to continue.")
-            if st.button("Continue", type="primary", disabled=not agree):
-                st.session_state.authenticated = True
-                st.session_state.role = role_detected
-                if role_detected == "student":
-                    # log student login
-                    update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
-                st.rerun()
+            STUDENT_PIN = st.secrets.get("STUDENT_PIN")
+            TUTOR_PIN = st.secrets.get("TUTOR_PIN")
 
-    # Stop rendering the rest of the app until authenticated
+            pin = st.text_input("Enter password", type="password", key="login_pin")
+
+            # Determine role based on current pin value
+            role_detected = None
+            if pin:
+                if pin == STUDENT_PIN:
+                    role_detected = "student"
+                    st.success("Password accepted.")
+                elif pin == TUTOR_PIN:
+                    role_detected = "tutor"
+                    st.success("PIN accepted (tutor).")
+                else:
+                    # Prefer showing the error only on submit (see below)
+                    pass
+
+            agree = False
+            if role_detected:
+                agree = st.checkbox(
+                    "I confirm I took note of the AI & Privacy Notice (see the blue button in the footer).",
+                    key="login_agree",
+                )
+                st.caption("You must accept to continue.")
+
+            submitted = st.form_submit_button("Continue", type="primary")
+
+            if submitted:
+                if not role_detected:
+                    st.error("Incorrect PIN. Please try again.")
+                elif not agree:
+                    st.warning("Please accept the notice to continue.")
+                else:
+                    st.session_state.authenticated = True
+                    st.session_state.role = role_detected
+                    if role_detected == "student":
+                        update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
+                    st.rerun()
+
     st.stop()
 
 # Compact app name bar (authenticated pages only)
