@@ -7,6 +7,66 @@ import requests
 import streamlit as st
 
 # === HELPERS ===
+# ---- Brand color config + styles (add after st.set_page_config) ----
+APP_BLUE = "#0B1F3B"  # same flat navy as your app bar
+
+def apply_brand_styles():
+    st.markdown(
+        f"""
+        <style>
+        :root {{
+            --app-blue: {APP_BLUE};
+            --app-blue-hover: #09233F; /* a slightly darker hover */
+        }}
+
+        /* Primary button -> brand blue */
+        div.stButton > button[kind="primary"],
+        div.stButton > button {{
+            background: var(--app-blue) !important;
+            border-color: var(--app-blue) !important;
+            color: #ffffff !important;
+        }}
+        div.stButton > button:hover {{
+            background: var(--app-blue-hover) !important;
+            border-color: var(--app-blue-hover) !important;
+        }}
+
+        /* Checkbox tick -> brand blue (modern browsers support accent-color) */
+        [data-testid="stCheckbox"] input[type="checkbox"] {{
+            accent-color: var(--app-blue);
+        }}
+
+        /* Optional: focus ring for inputs (nice to have) */
+        .stTextInput input:focus {{
+            box-shadow: 0 0 0 3px rgba(11,31,59,0.25) !important;
+            border-color: var(--app-blue) !important;
+            outline: none !important;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def blue_notice(msg: str):
+    """Brand-colored info box for 'PIN accepted' style messages."""
+    st.markdown(
+        f"""
+        <div style="
+            border: 1px solid var(--app-blue);
+            background: rgba(11,31,59,0.06);
+            color: var(--app-blue);
+            padding: 10px 12px; border-radius: 8px; font-weight: 600;
+        ">
+            {msg}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# Call once, right after page_config:
+apply_brand_styles()
+
+
 def render_blue_appbar(title: str = "European Capital Markets Law – Digital Mentor"):
     import streamlit as st
     st.markdown(
@@ -382,7 +442,7 @@ if not st.session_state.authenticated:
         unsafe_allow_html=True,
     )
 
-    # If you use a blue app bar, keep it here:
+    # If you have a blue app bar helper, keep it here:
     # render_blue_appbar(title="European Capital Markets Law – Digital Mentor")
 
     with st.form("login_form", clear_on_submit=False):
@@ -402,17 +462,17 @@ if not st.session_state.authenticated:
 
             pin = st.text_input("Enter password", type="password", key="login_pin")
 
-            # Determine role based on current pin value
+            # Determine role (if any) based on current pin value
             role_detected = None
             if pin:
                 if pin == STUDENT_PIN:
                     role_detected = "student"
-                    st.success("Password accepted.")
+                    blue_notice("Password accepted.")  # brand-blue notice
                 elif pin == TUTOR_PIN:
                     role_detected = "tutor"
-                    st.success("PIN accepted (tutor).")
+                    blue_notice("PIN accepted (tutor).")  # brand-blue notice
                 else:
-                    # Prefer showing the error only on submit (see below)
+                    # do not show immediate error while typing; handle on submit
                     pass
 
             agree = False
