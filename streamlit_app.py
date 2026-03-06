@@ -430,9 +430,8 @@ if "role" not in st.session_state:
     st.session_state.role = None
 
 # === PATCH 3: login gate ===
-
 # === LOGIN GATE (one-step; Enter OR button submit) ===
-if not st.session_state.authenticated:
+if not st.session_state.get("authenticated", False):
     # Hide the sidebar on the landing page only
     st.markdown(
         """
@@ -444,8 +443,12 @@ if not st.session_state.authenticated:
         unsafe_allow_html=True,
     )
 
-    # (Optional) keep your blue app bar here if you have it:
+    # (Optional) keep your blue app bar here if you use it:
     # render_blue_appbar(title="European Capital Markets Law – Digital Mentor")
+
+    # Read secrets once (as strings) to avoid any scoping surprises
+    STUDENT_PIN = str(st.secrets.get("STUDENT_PIN", ""))
+    TUTOR_PIN   = str(st.secrets.get("TUTOR_PIN", ""))
 
     # --- ONE-STEP LOGIN FORM ---
     # Pressing Enter inside the password field will submit this form.
@@ -461,11 +464,8 @@ if not st.session_state.authenticated:
         with right:
             st.title("European Capital Markets Law – Digital Mentor")
 
-            STUDENT_PIN = st.secrets.get("STUDENT_PIN")
-            TUTOR_PIN   = st.secrets.get("TUTOR_PIN")
-
-            # 1) Password input (Enter submits the form)
-            st.text_input("Enter password", type="password", key="login_pin")
+            # 1) Password input (Enter will submit the form)
+            pin_input = st.text_input("Enter password", type="password", key="login_pin")
 
             # 2) Acknowledgment checkbox
             st.checkbox(
@@ -477,31 +477,35 @@ if not st.session_state.authenticated:
             # 3) Submit button (click OR Enter both submit the same form)
             submitted = st.form_submit_button("Continue", type="primary")
 
-    # --- Handle submission (same run) ---
-    if submitted:
-        pin_val = (st.session_state.get("login_pin") or "").strip()
-        agreed  = bool(st.session_state.get("login_agree"))
+            # --- Handle submission *inside* the form block to use committed values ---
+            if submitted:
+                # IMPORTANT: read the final, committed values *at submit time*
+                pin_val = (pin_input or st.session_state.get("login_pin") or "").strip()
+                agreed  = bool(st.session_state.get("login_agree"))
 
-        role_detected = None
-        if STUDENT_PIN and pin_val == STUDENT_PIN:
-            role_detected = "student"
-        elif TUTOR_PIN and pin_val == TUTOR_PIN:
-            role_detected = "tutor"
+                # Decide role strictly at submit time
+                if pin_val == STUDENT_PIN:
+                    role_detected = "student"
+                elif pin_val == TUTOR_PIN:
+                    role_detected = "tutor"
+                else:
+                    role_detected = None
 
-        # Order of checks to match your requirements:
-        if not role_detected:
-            st.error("Incorrect password")
-        elif not agreed:
-            st.warning("Tick box to continue")
-        else:
-            st.session_state.authenticated = True
-            st.session_state.role = role_detected
-            if role_detected == "student":
-                update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
-            st.rerun()
+                # Required validations, in your requested order/messages
+                if not role_detected:
+                    st.error("Incorrect password")
+                elif not agreed:
+                    st.warning("Tick box to continue")
+                else:
+                    st.session_state.authenticated = True
+                    st.session_state.role = role_detected
+                    if role_detected == "student":
+                        update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
+                    st.rerun()
 
     # Stop rendering the rest until authenticated
     st.stop()
+
 
 # Compact app name bar (authenticated pages only)
 st.markdown("""
