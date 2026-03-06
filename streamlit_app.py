@@ -7,45 +7,6 @@ import requests
 import streamlit as st
 
 # === HELPERS ===
-# ---- Brand color config + styles (add after st.set_page_config) ----
-APP_BLUE = "#0B1F3B"  # same flat navy as your app bar
-
-def apply_brand_styles():
-    st.markdown(
-        f"""
-        <style>
-        :root {{
-            --app-blue: {APP_BLUE};
-            --app-blue-hover: #09233F; /* a slightly darker hover */
-        }}
-
-        /* Primary button -> brand blue */
-        div.stButton > button[kind="primary"],
-        div.stButton > button {{
-            background: var(--app-blue) !important;
-            border-color: var(--app-blue) !important;
-            color: #ffffff !important;
-        }}
-        div.stButton > button:hover {{
-            background: var(--app-blue-hover) !important;
-            border-color: var(--app-blue-hover) !important;
-        }}
-
-        /* Checkbox tick -> brand blue (modern browsers support accent-color) */
-        [data-testid="stCheckbox"] input[type="checkbox"] {{
-            accent-color: var(--app-blue);
-        }}
-
-        /* Optional: focus ring for inputs (nice to have) */
-        .stTextInput input:focus {{
-            box-shadow: 0 0 0 3px rgba(11,31,59,0.25) !important;
-            border-color: var(--app-blue) !important;
-            outline: none !important;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
 
 def blue_notice(msg: str):
     """Brand-colored info box for 'PIN accepted' style messages."""
@@ -408,6 +369,40 @@ st.set_page_config(
     initial_sidebar_state="collapsed"  # NEW: collapse sidebar by default
 )
 
+# ---- Brand color and UI styles ----
+APP_BLUE = "#0B1F3B"  # same flat navy as your app bar
+
+def apply_brand_styles():
+    import streamlit as st
+    st.markdown(
+        f"""
+        <style>
+        :root {{
+            --app-blue: {APP_BLUE};
+            --app-blue-hover: #09233F;
+        }}
+        /* Primary button -> brand blue */
+        div.stButton > button[kind="primary"], div.stButton > button {{
+            background: var(--app-blue) !important;
+            border-color: var(--app-blue) !important;
+            color: #ffffff !important;
+        }}
+        div.stButton > button:hover {{
+            background: var(--app-blue-hover) !important;
+            border-color: var(--app-blue-hover) !important;
+        }}
+        /* Checkbox tick -> brand blue (modern browsers) */
+        [data-testid="stCheckbox"] input[type="checkbox"] {{
+            accent-color: var(--app-blue);
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# Call once, right after st.set_page_config(...)
+apply_brand_styles()
+
 # Global width cap for a professional look (applies to all pages)
 st.markdown("""
 <style>
@@ -443,10 +438,10 @@ if not st.session_state.get("authenticated", False):
         unsafe_allow_html=True,
     )
 
-    # (Optional) keep your blue app bar here if you use it:
+    # (Optional) If you have a blue app bar helper, keep it here:
     # render_blue_appbar(title="European Capital Markets Law – Digital Mentor")
 
-    # Read secrets once (as strings) to avoid any scoping surprises
+    # Read secrets once (cast to str to avoid type surprises)
     STUDENT_PIN = str(st.secrets.get("STUDENT_PIN", ""))
     TUTOR_PIN   = str(st.secrets.get("TUTOR_PIN", ""))
 
@@ -464,8 +459,8 @@ if not st.session_state.get("authenticated", False):
         with right:
             st.title("European Capital Markets Law – Digital Mentor")
 
-            # 1) Password input (Enter will submit the form)
-            pin_input = st.text_input("Enter password", type="password", key="login_pin")
+            # 1) Password input (Enter submits)
+            st.text_input("Enter password", type="password", key="login_pin")
 
             # 2) Acknowledgment checkbox
             st.checkbox(
@@ -477,31 +472,29 @@ if not st.session_state.get("authenticated", False):
             # 3) Submit button (click OR Enter both submit the same form)
             submitted = st.form_submit_button("Continue", type="primary")
 
-            # --- Handle submission *inside* the form block to use committed values ---
-            if submitted:
-                # IMPORTANT: read the final, committed values *at submit time*
-                pin_val = (pin_input or st.session_state.get("login_pin") or "").strip()
-                agreed  = bool(st.session_state.get("login_agree"))
+    # --- Handle submission outside the form to ensure final values are committed ---
+    if submitted:
+        pin_val = (st.session_state.get("login_pin") or "").strip()
+        agreed  = bool(st.session_state.get("login_agree"))
 
-                # Decide role strictly at submit time
-                if pin_val == STUDENT_PIN:
-                    role_detected = "student"
-                elif pin_val == TUTOR_PIN:
-                    role_detected = "tutor"
-                else:
-                    role_detected = None
+        role_detected = None
+        if pin_val == STUDENT_PIN:
+            role_detected = "student"
+        elif pin_val == TUTOR_PIN:
+            role_detected = "tutor"
 
-                # Required validations, in your requested order/messages
-                if not role_detected:
-                    st.error("Incorrect password")
-                elif not agreed:
-                    st.warning("Tick box to continue")
-                else:
-                    st.session_state.authenticated = True
-                    st.session_state.role = role_detected
-                    if role_detected == "student":
-                        update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
-                    st.rerun()
+        # Exact messages you requested:
+        if not role_detected:
+            st.error("Incorrect password")
+        elif not agreed:
+            st.warning("Tick box to continue")
+        else:
+            st.session_state.authenticated = True
+            st.session_state.role = role_detected
+            if role_detected == "student":
+                # audit log as in your module
+                update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
+            st.rerun()
 
     # Stop rendering the rest until authenticated
     st.stop()
