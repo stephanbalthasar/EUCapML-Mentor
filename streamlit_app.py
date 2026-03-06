@@ -430,6 +430,8 @@ if "role" not in st.session_state:
     st.session_state.role = None
 
 # === PATCH 3: login gate ===
+
+# === LOGIN GATE (one-step; Enter OR button submit) ===
 if not st.session_state.authenticated:
     # Hide the sidebar on the landing page only
     st.markdown(
@@ -442,9 +444,11 @@ if not st.session_state.authenticated:
         unsafe_allow_html=True,
     )
 
-    # If you have a blue app bar helper, keep it here:
+    # (Optional) keep your blue app bar here if you have it:
     # render_blue_appbar(title="European Capital Markets Law – Digital Mentor")
 
+    # --- ONE-STEP LOGIN FORM ---
+    # Pressing Enter inside the password field will submit this form.
     with st.form("login_form", clear_on_submit=False):
         left, right = st.columns([1, 1])
 
@@ -460,58 +464,43 @@ if not st.session_state.authenticated:
             STUDENT_PIN = st.secrets.get("STUDENT_PIN")
             TUTOR_PIN   = st.secrets.get("TUTOR_PIN")
 
-            # The field lives in the form; give it a stable key
+            # 1) Password input (Enter submits the form)
             st.text_input("Enter password", type="password", key="login_pin")
 
-            # (Optional) show a live hint box while typing — purely cosmetic.
-            # This preview uses the current (pre-submit) value.
-            pin_preview = st.session_state.get("login_pin", "").strip()
-            if pin_preview:
-                if STUDENT_PIN and pin_preview == STUDENT_PIN:
-                    try:
-                        blue_notice("Password accepted.")  # brand-blue notice if helper exists
-                    except NameError:
-                        st.info("Password accepted.")
-                elif TUTOR_PIN and pin_preview == TUTOR_PIN:
-                    try:
-                        blue_notice("PIN accepted (tutor).")
-                    except NameError:
-                        st.info("PIN accepted (tutor).")
-
-            # Consent checkbox (can be ticked before submit)
-            agree = st.checkbox(
+            # 2) Acknowledgment checkbox
+            st.checkbox(
                 "I confirm I took note of the AI & Privacy Notice (see the blue button in the footer).",
                 key="login_agree",
             )
             st.caption("You must accept to continue.")
 
-            # IMPORTANT: submit button comes AFTER the widgets
+            # 3) Submit button (click OR Enter both submit the same form)
             submitted = st.form_submit_button("Continue", type="primary")
 
-            if submitted:
-                # 🔐 Read the committed value from session_state on submit
-                pin_val = (st.session_state.get("login_pin") or "").strip()
+    # --- Handle submission (same run) ---
+    if submitted:
+        pin_val = (st.session_state.get("login_pin") or "").strip()
+        agreed  = bool(st.session_state.get("login_agree"))
 
-                # Decide role strictly at submit time (avoids 'Enter shows incorrect' bug)
-                if STUDENT_PIN and pin_val == STUDENT_PIN:
-                    role_detected = "student"
-                elif TUTOR_PIN and pin_val == TUTOR_PIN:
-                    role_detected = "tutor"
-                else:
-                    role_detected = None
+        role_detected = None
+        if STUDENT_PIN and pin_val == STUDENT_PIN:
+            role_detected = "student"
+        elif TUTOR_PIN and pin_val == TUTOR_PIN:
+            role_detected = "tutor"
 
-                # Validate
-                if not role_detected:
-                    st.error("Incorrect PIN. Please try again.")
-                elif not agree:
-                    st.warning("Please accept the notice to continue.")
-                else:
-                    st.session_state.authenticated = True
-                    st.session_state.role = role_detected
-                    if role_detected == "student":
-                        update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
-                    st.rerun()
+        # Order of checks to match your requirements:
+        if not role_detected:
+            st.error("Incorrect password")
+        elif not agreed:
+            st.warning("Tick box to continue")
+        else:
+            st.session_state.authenticated = True
+            st.session_state.role = role_detected
+            if role_detected == "student":
+                update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
+            st.rerun()
 
+    # Stop rendering the rest until authenticated
     st.stop()
 
 # Compact app name bar (authenticated pages only)
