@@ -458,34 +458,49 @@ if not st.session_state.authenticated:
             st.title("European Capital Markets Law – Digital Mentor")
 
             STUDENT_PIN = st.secrets.get("STUDENT_PIN")
-            TUTOR_PIN = st.secrets.get("TUTOR_PIN")
+            TUTOR_PIN   = st.secrets.get("TUTOR_PIN")
 
-            pin = st.text_input("Enter password", type="password", key="login_pin")
+            # The field lives in the form; give it a stable key
+            st.text_input("Enter password", type="password", key="login_pin")
 
-            # Determine role (if any) based on current pin value
-            role_detected = None
-            if pin:
-                if pin == STUDENT_PIN:
-                    role_detected = "student"
-                    blue_notice("Password accepted.")  # brand-blue notice
-                elif pin == TUTOR_PIN:
-                    role_detected = "tutor"
-                    blue_notice("PIN accepted (tutor).")  # brand-blue notice
-                else:
-                    # do not show immediate error while typing; handle on submit
-                    pass
+            # (Optional) show a live hint box while typing — purely cosmetic.
+            # This preview uses the current (pre-submit) value.
+            pin_preview = st.session_state.get("login_pin", "").strip()
+            if pin_preview:
+                if STUDENT_PIN and pin_preview == STUDENT_PIN:
+                    try:
+                        blue_notice("Password accepted.")  # brand-blue notice if helper exists
+                    except NameError:
+                        st.info("Password accepted.")
+                elif TUTOR_PIN and pin_preview == TUTOR_PIN:
+                    try:
+                        blue_notice("PIN accepted (tutor).")
+                    except NameError:
+                        st.info("PIN accepted (tutor).")
 
-            agree = False
-            if role_detected:
-                agree = st.checkbox(
-                    "I confirm I took note of the AI & Privacy Notice (see the blue button in the footer).",
-                    key="login_agree",
-                )
-                st.caption("You must accept to continue.")
+            # Consent checkbox (can be ticked before submit)
+            agree = st.checkbox(
+                "I confirm I took note of the AI & Privacy Notice (see the blue button in the footer).",
+                key="login_agree",
+            )
+            st.caption("You must accept to continue.")
 
+            # IMPORTANT: submit button comes AFTER the widgets
             submitted = st.form_submit_button("Continue", type="primary")
 
             if submitted:
+                # 🔐 Read the committed value from session_state on submit
+                pin_val = (st.session_state.get("login_pin") or "").strip()
+
+                # Decide role strictly at submit time (avoids 'Enter shows incorrect' bug)
+                if STUDENT_PIN and pin_val == STUDENT_PIN:
+                    role_detected = "student"
+                elif TUTOR_PIN and pin_val == TUTOR_PIN:
+                    role_detected = "tutor"
+                else:
+                    role_detected = None
+
+                # Validate
                 if not role_detected:
                     st.error("Incorrect PIN. Please try again.")
                 elif not agree:
