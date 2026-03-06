@@ -124,44 +124,52 @@ def render_flat_navy_hero(
     st.markdown(
         """
         <style>
-            /* Constrain page width for a premium feel */
-            .main > div { max-width: 1120px; margin: 0 auto; }
-
-            /* Flat navy hero */
-            .sb-hero {
-                background: #0B1F3B;           /* flat navy */
-                color: #ffffff;
-                border-radius: 14px;
-                padding: 14px 24px;
-                box-shadow: 0 8px 24px rgba(5,16,28,0.18);
-            }
-            .sb-hero-inner {
-                display: flex; align-items: center; gap: 18px;
-            }
-            .sb-hero h1 {
-                font-weight: 700; margin: 0 0 8px 0;
-                font-size: 2.25rem; line-height: 1.2;
-                letter-spacing: -0.2px;
-            }
-            .sb-hero p {
-                margin: 0; font-size: 1.125rem;
-                line-height: 1.35; opacity: 0.92;
-            }
-            .sb-hero .sb-logo {
-                flex: 0 0 auto;
-                display: flex; align-items: center; justify-content: center;
-                width: 56px; height: 56px;
-            }
-            .sb-hero .sb-logo img { width: 100%; height: auto; }
-            @media (max-width: 800px) {
-                .sb-hero-inner { flex-direction: column; align-items: flex-start; }
-                .sb-hero .sb-logo { width: 56px; height: 56px; }
-            }
+        /* Constrain page width for a premium feel */
+        .main > div { max-width: 1120px; margin: 0 auto; }
+    
+        /* Flat navy hero */
+        .sb-hero {
+          background: #0B1F3B; /* flat navy */
+          color: #ffffff;
+          border-radius: 14px;
+          padding: 14px 18px;              /* ↓ smaller vertical padding */
+          box-shadow: 0 8px 24px rgba(5,16,28,0.18);
+        }
+        .sb-hero-inner {
+          display: flex; align-items: center; gap: 16px;
+        }
+        .sb-hero h1 {
+          font-weight: 700; margin: 0 0 6px 0;
+          font-size: 1.9rem; line-height: 1.2;
+          letter-spacing: -0.2px;
+        }
+        .sb-hero p {
+          margin: 0; font-size: 1.05rem; line-height: 1.35; opacity: 0.92;
+        }
+    
+        /* Logo box kept small; the IMG itself is hard‑capped by max-height */
+        .sb-hero .sb-logo {
+          flex: 0 0 auto;
+          display: flex; align-items: center; justify-content: center;
+          width: 72px; height: 72px;      /* container target size */
+        }
+        .sb-hero .sb-logo img {
+          max-height: 64px;               /* HARD CAP: hero never grows too tall */
+          width: auto; height: auto;      /* preserve aspect ratio */
+          display: block;
+        }
+    
+        @media (max-width: 800px) {
+          .sb-hero-inner { flex-direction: row; align-items: center; gap: 12px; }
+          .sb-hero .sb-logo { width: 60px; height: 60px; }
+          .sb-hero .sb-logo img { max-height: 52px; }
+          .sb-hero h1 { font-size: 1.6rem; }
+        }
         </style>
         """,
         unsafe_allow_html=True
     )
-
+    
     # Render hero block
     st.markdown('<div class="sb-hero">', unsafe_allow_html=True)
     st.markdown('<div class="sb-hero-inner">', unsafe_allow_html=True)
