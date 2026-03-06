@@ -7,6 +7,27 @@ import requests
 import streamlit as st
 
 # === HELPERS ===
+def render_blue_appbar(title: str = "European Capital Markets Law – Digital Mentor"):
+    import streamlit as st
+    st.markdown(
+        """
+        <style>
+        .sb-blue-appbar {
+            background: #0B1F3B; /* flat navy */
+            color: #ffffff;
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-weight: 700;
+            margin: 6px 0 18px 0;
+            box-shadow: 0 6px 16px rgba(5,16,28,0.18);
+        }
+        .sb-blue-appbar .title{ font-size:1.1rem; letter-spacing: .2px; }
+        </style>
+        <div class="sb-blue-appbar"><div class="title">""" + title + """</div></div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # =============================
 # Conversation utilities (DRY)
 # =============================
@@ -351,48 +372,58 @@ if "role" not in st.session_state:
 # === PATCH 3: login gate ===
 if not st.session_state.authenticated:
     # Hide the sidebar on the landing page only
-    st.markdown("""
-    <style>
-      div[data-testid="stSidebar"] { display: none !important; }
-      /* Slightly tighten top/bottom padding while the sidebar is hidden */
-      .block-container { padding-top: 0.75rem !important; padding-bottom: 2rem !important; }
-    </style>
-    """, unsafe_allow_html=True)
-    # Flat navy hero (no CTAs here)
-    render_flat_navy_hero(
-        title="European Capital Markets Law - Digital Mentor",
-        subtitle="Master your Capital Markets Law Class with Confidence",
-        logo_path="assets/logo.png"  # or None if you don’t want a logo
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stSidebar"] { display: none !important; }
+        /* Slightly tighten top/bottom padding while the sidebar is hidden */
+        .block-container { padding-top: 0.75rem !important; padding-bottom: 2rem !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
-    
-    STUDENT_PIN = st.secrets.get("STUDENT_PIN")
-    TUTOR_PIN   = st.secrets.get("TUTOR_PIN")
 
-    pin = st.text_input("Enter password", type="password")
+    # Keep the blue app bar at the top
+    render_blue_appbar(title="European Capital Markets Law – Digital Mentor")
 
-    # Show the consent checkbox only after a correct PIN is typed
-    role_detected = None
-    if pin and pin == STUDENT_PIN:
-        role_detected = "student"
-        st.success("Password accepted.")
-    elif pin and pin == TUTOR_PIN:
-        role_detected = "tutor"
-        st.success("PIN accepted (tutor).")
-    elif pin:
-        st.error("Incorrect PIN. Please try again.")
+    # Two-column landing section: left = hero image, right = title + password
+    left, right = st.columns([1, 1])
+    with left:
+        try:
+            st.image("assets/hero_logo.png", use_column_width=True)
+        except Exception:
+            # Fallback to old logo if hero not found
+            st.image("assets/logo.png", use_column_width=True)
 
-    if role_detected:
-        agree = st.checkbox(
-            "I confirm I took note of the AI & Privacy Notice (see the blue button in the footer)."
-        )
-        st.caption("You must accept to continue.")
-        if st.button("Continue", type="primary", disabled=not agree):
-            st.session_state.authenticated = True
-            st.session_state.role = role_detected
-            if role_detected == "student":
-                # log student login
-                update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
-            st.rerun()
+    with right:
+        st.title("European Capital Markets Law – Digital Mentor")
+        STUDENT_PIN = st.secrets.get("STUDENT_PIN")
+        TUTOR_PIN = st.secrets.get("TUTOR_PIN")
+        pin = st.text_input("Enter password", type="password")
+
+        # Show the consent checkbox only after a correct PIN is typed
+        role_detected = None
+        if pin and pin == STUDENT_PIN:
+            role_detected = "student"
+            st.success("Password accepted.")
+        elif pin and pin == TUTOR_PIN:
+            role_detected = "tutor"
+            st.success("PIN accepted (tutor).")
+        elif pin:
+            st.error("Incorrect PIN. Please try again.")
+
+        if role_detected:
+            agree = st.checkbox(
+                "I confirm I took note of the AI & Privacy Notice (see the blue button in the footer)."
+            )
+            st.caption("You must accept to continue.")
+            if st.button("Continue", type="primary", disabled=not agree):
+                st.session_state.authenticated = True
+                st.session_state.role = role_detected
+                if role_detected == "student":
+                    # log student login
+                    update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
+                st.rerun()
 
     # Stop rendering the rest of the app until authenticated
     st.stop()
