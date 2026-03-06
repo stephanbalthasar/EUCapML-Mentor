@@ -419,7 +419,6 @@ if "role" not in st.session_state:
 
 # === PATCH 3: login gate ===
 # === LOGIN GATE (one-step; Enter OR button submit) ===
-# === LOGIN GATE (one-step; Enter OR button submit) ===
 if not st.session_state.get("authenticated", False):
     # Hide the sidebar on the landing page only
     st.markdown(
@@ -439,6 +438,14 @@ if not st.session_state.get("authenticated", False):
     STUDENT_PIN = str(st.secrets.get("STUDENT_PIN", ""))
     TUTOR_PIN   = str(st.secrets.get("TUTOR_PIN", ""))
 
+    # --- Committers make Enter reliable by capturing final values at submit ---
+    def _commit_pin():
+        # Cache the pin value at the moment of submission / change
+        st.session_state["__pin_committed__"] = st.session_state.get("login_pin", "")
+
+    def _commit_agree():
+        st.session_state["__agree_committed__"] = bool(st.session_state.get("login_agree", False))
+
     # --- ONE-STEP LOGIN FORM ---
     # Pressing Enter inside the password field will submit this form.
     with st.form("login_form", clear_on_submit=False):
@@ -454,12 +461,18 @@ if not st.session_state.get("authenticated", False):
             st.title("European Capital Markets Law – Digital Mentor")
 
             # 1) Password input (Enter submits)
-            st.text_input("Enter password", type="password", key="login_pin")
+            st.text_input(
+                "Enter password",
+                type="password",
+                key="login_pin",
+                on_change=_commit_pin,  # <-- ensures final value is committed
+            )
 
             # 2) Acknowledgment checkbox
             st.checkbox(
                 "I confirm I took note of the AI & Privacy Notice (see the blue button in the footer).",
                 key="login_agree",
+                on_change=_commit_agree,  # <-- commit checkbox on change/submit
             )
             st.caption("You must accept to continue.")
 
@@ -468,8 +481,11 @@ if not st.session_state.get("authenticated", False):
 
     # --- Handle submission outside the form to ensure final values are committed ---
     if submitted:
-        pin_val = (st.session_state.get("login_pin") or "").strip()
-        agreed  = bool(st.session_state.get("login_agree"))
+        # Prefer committed values (set by on_change), fall back to raw state if needed
+        pin_val = (st.session_state.get("__pin_committed__")
+                   or st.session_state.get("login_pin")
+                   or "").strip()
+        agreed  = st.session_state.get("__agree_committed__", st.session_state.get("login_agree", False))
 
         role_detected = None
         if pin_val == STUDENT_PIN:
