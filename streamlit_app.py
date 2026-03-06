@@ -401,17 +401,27 @@ if not st.session_state.authenticated:
 # Compact app name bar (authenticated pages only)
 st.markdown("""
 <style>
-  .appbar {
-    background: #F6F8FC;
-    color: #0B1F3B;
-    border: 1px solid #E7EAF0;
-    border-radius: 10px;
-    padding: 10px 12px;
-    font-weight: 600;
-    margin: 6px 0 12px 0;
-  }
+.appbar {
+  background: #F6F8FC;
+  color: #0B1F3B;
+  border: 1px solid #E7EAF0;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 600;
+  margin: 6px 0 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.appbar img { height: 28px; }            /* adjust to 24–36px if you like */
+@media (max-width: 640px){
+  .appbar img { height: 24px; }
+}
 </style>
-<div class="appbar">European Capital Markets Law – Digital Mentor</div>
+<div class="appbar">
+  <img src="assets/square_logo.png" alt="EUCapML logo" />
+  <span>European Capital Markets Law – Digital Mentor</span>
+</div>
 """, unsafe_allow_html=True)
 
 # Keep the content higher up the page (authenticated screens)
