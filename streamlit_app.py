@@ -359,12 +359,13 @@ if not st.session_state.authenticated:
     </style>
     """, unsafe_allow_html=True)
     # Flat navy hero (no CTAs here)
+    # Flat navy hero (no CTAs here)
     render_flat_navy_hero(
         title="European Capital Markets Law - Digital Mentor",
         subtitle="Master your Capital Markets Law Class with Confidence",
-        logo_path="assets/logo.png"  # or None if you don’t want a logo
+        logo_path="assets/hero_logo.png"   # ← use the wide hero banner
     )
-    
+        
     STUDENT_PIN = st.secrets.get("STUDENT_PIN")
     TUTOR_PIN   = st.secrets.get("TUTOR_PIN")
 
