@@ -419,6 +419,7 @@ if "role" not in st.session_state:
 
 # === PATCH 3: login gate ===
 # === LOGIN GATE (one-step; Enter OR button submit) ===
+# === LOGIN GATE (one-step; Enter OR button submit) ===
 if not st.session_state.get("authenticated", False):
     # Hide the sidebar on the landing page only
     st.markdown(
@@ -431,7 +432,7 @@ if not st.session_state.get("authenticated", False):
         unsafe_allow_html=True,
     )
 
-    # (Optional) If you have a blue app bar helper, keep it here:
+    # (Optional) keep your blue app bar here if you have it:
     # render_blue_appbar(title="European Capital Markets Law – Digital Mentor")
 
     # Read secrets once (cast to str to avoid type surprises)
@@ -491,7 +492,6 @@ if not st.session_state.get("authenticated", False):
 
     # Stop rendering the rest until authenticated
     st.stop()
-
 
 # Compact app name bar (authenticated pages only)
 st.markdown("""
