@@ -181,12 +181,9 @@ def render_brand_bar_aligned(
 """,
         unsafe_allow_html=True,
     )
-
 # =============================
 # Conversation utilities (DRY)
 # =============================
-from typing import Callable, List, Dict, Any
-
 def _approx_tokens(s: str) -> int:
     """Rough token estimate (~4 chars / token)."""
     return max(1, len(s) // 4)
@@ -290,7 +287,6 @@ def render_conversation(
 
 # --- HERO (flat navy) ---
 def render_sticky_footer():
-    import streamlit as st
     st.markdown(
         """
         <style>
@@ -394,7 +390,6 @@ def load_privacy_notice():
 
 # === PATCH 1: privacy overlay (opens via ?show_privacy=1) ===
 def _get_query_params():
-    import streamlit as st
     try:
         return st.experimental_get_query_params()  # legacy API
     except Exception:
@@ -424,8 +419,6 @@ def update_gist(new_entry):
     Uses a dedicated token only: st.secrets['LOG_GIST_TOKEN'].
     If not configured, this function silently no-ops.
     """
-    import streamlit as st
-
     token = st.secrets.get("LOG_GIST_TOKEN")
     gist_id = st.secrets.get("GIST_ID")
     if not token or not gist_id:
