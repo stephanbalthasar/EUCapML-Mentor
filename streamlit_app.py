@@ -115,7 +115,7 @@ def render_conversation(
 
 # --- HERO (flat navy) ---
 def render_flat_navy_hero(
-    title: str = "European Capital Markets Law - Digital Mentor",
+    title: str = "European Capital Markets Law - AI Mentor",
     subtitle: str = "Master your Capital Markets Law Class with Confidence",
     logo_path: str | None = "assets/logo.png",  # set to None if you have no logo
 ):
@@ -411,7 +411,7 @@ if not st.session_state.authenticated:
 
     # Flat navy hero (no CTAs here)
     render_flat_navy_hero(
-        title="European Capital Markets Law - Digital Mentor",
+        title="European Capital Markets Law - AI Mentor",
         subtitle="Master your Capital Markets Law Class with Confidence",
         logo_path="assets/logo.png",  # or None if you don’t want a logo
     )
@@ -470,7 +470,7 @@ st.markdown("""
     margin: 6px 0 12px 0;
   }
 </style>
-<div class="appbar">European Capital Markets Law – Digital Mentor</div>
+<div class="appbar">European Capital Markets Law – AI Mentor</div>
 """, unsafe_allow_html=True)
 
 # Keep the content higher up the page (authenticated screens)
