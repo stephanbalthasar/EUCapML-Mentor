@@ -1,7 +1,6 @@
 # streamlit_app.py
 # Minimal UI to exercise both engines using the booklet index from the private repo.
 
-
 import json, time, os  # time is used by your existing call sites
 import requests  
 import streamlit as st
@@ -306,77 +305,6 @@ def render_conversation(
     st.rerun()
 
 # --- HERO (flat navy) ---
-def render_flat_navy_hero(
-    title: str = "European Capital Markets Law - AI Mentor",
-    subtitle: str = "Master your Capital Markets Law Class with Confidence",
-    logo_path: str | None = "assets/logo.png",  # set to None if you have no logo
-):
-    import streamlit as st
-
-    st.markdown(
-        """
-        <style>
-            /* Constrain page width for a premium feel */
-            .main > div { max-width: 1120px; margin: 0 auto; }
-
-            /* Flat navy hero */
-            .sb-hero {
-                background: #0B1F3B;           /* flat navy */
-                color: #ffffff;
-                border-radius: 14px;
-                padding: 28px 24px;
-                box-shadow: 0 8px 24px rgba(5,16,28,0.18);
-            }
-            .sb-hero-inner {
-                display: flex; align-items: center; gap: 18px;
-            }
-            .sb-hero h1 {
-                font-weight: 700; margin: 0 0 8px 0;
-                font-size: 2.25rem; line-height: 1.2;
-                letter-spacing: -0.2px;
-            }
-            .sb-hero p {
-                margin: 0; font-size: 1.125rem;
-                line-height: 1.35; opacity: 0.92;
-            }
-            .sb-hero .sb-logo {
-                flex: 0 0 auto;
-                display: flex; align-items: center; justify-content: center;
-                width: 100px; height: 100px;
-            }
-            .sb-hero .sb-logo img { width: 100%; height: auto; }
-            @media (max-width: 800px) {
-                .sb-hero-inner { flex-direction: column; align-items: flex-start; }
-                .sb-hero .sb-logo { width: 84px; height: 84px; }
-            }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # Render hero block
-    st.markdown('<div class="sb-hero">', unsafe_allow_html=True)
-    st.markdown('<div class="sb-hero-inner">', unsafe_allow_html=True)
-    if logo_path:
-        try:
-            st.markdown('<div class="sb-logo">', unsafe_allow_html=True)
-            st.image(logo_path, use_column_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        except Exception:
-            pass
-    st.markdown(
-        f"""
-        <div class="sb-hero-text">
-            <h1>{title}</h1>
-            <p>{subtitle}</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-    st.markdown('</div>', unsafe_allow_html=True)   # /sb-hero-inner
-    st.markdown('</div>', unsafe_allow_html=True)   # /sb-hero
-    st.markdown("")  # small spacing after hero
-
 def render_sticky_footer():
     import streamlit as st
     st.markdown(
