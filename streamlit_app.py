@@ -1,125 +1,30 @@
 # streamlit_app.py
 # Minimal UI to exercise both engines using the booklet index from the private repo.
 
-import json, time, os  # time is used by your existing call sites
-import requests  
+# ── imports (top of file) ──────────────────────────────────────────────────────
+import base64
+import json
+import mimetypes
+import os
+import requests
 import streamlit as st
+import time
+from typing import Callable, List, Dict, Any
+# ───────────────────────────────────────────────────────────────────────────────
 
 # === HELPERS ===
 # === BRAND HEADER (precise alignment | real <img> | tight spacing) ===
 def render_brand_hero_aligned(
-    icon_src: str = "assets/lamfalussy_L_256.png",   # PNG/SVG/JPG path
+    icon_src: str = "assets/lamfalussy_L_256.png",    # PNG/SVG/JPG path
     title: str = "Lamfalussy Code",
     subhead: str = "Your European Capital Markets Law AI Mentor.",
-    icon_height_desktop: int = 96,                   # px on desktop
-    icon_height_mobile: int = 72,                    # px on small screens
-    logo_top_nudge_px: int = 0,                      # +down / -up (logo fine‑tune)
-    title_nudge_px: int = 20,                         # +down / -up (title fine‑tune)
-    sub_nudge_px: int = 20                            # +down / -up (subtitle fine‑tune)
-):
-    """
-    Renders a landing hero where:
-      • top of title aligns to top of logo
-      • bottom of subtitle aligns to bottom of logo (tight – no excess gap)
-
-    Implementation notes:
-      - Real <img class="lc-logo" ...> is used so CSS applies reliably.
-      - The text column has the SAME height as the logo.
-      - Subtitle is pinned to the bottom via `margin-top: auto`.
-    """
-    import streamlit as st
-    import base64, mimetypes
-
-    # Build a data-URI so the logo always renders inside HTML
-    try:
-        mime, _ = mimetypes.guess_type(icon_src)
-        if not mime:
-            mime = "image/png"
-        with open(icon_src, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("ascii")
-        img_data_uri = f"data:{mime};base64,{b64}"
-    except Exception:
-        img_data_uri = icon_src  # fallback to path if reading fails
-
-    st.markdown(
-        f"""
-<style>
-  .lc-hero {{
-    display: flex;
-    align-items: flex-start;          /* lock logo top to text top */
-    gap: 16px;
-    margin: 2px 0 10px 0;
-  }}
-  .lc-logo {{
-    height: {icon_height_desktop}px;
-    width: auto;
-    display: block;
-    position: relative;
-    top: {-logo_top_nudge_px}px;      /* negative lifts, positive lowers */
-  }}
-  .lc-text {{
-    display: flex;
-    flex-direction: column;
-    height: {icon_height_desktop}px;  /* SAME height as logo */
-  }}
-  .lc-title {{
-    margin: 0;
-    font-weight: 800;
-    font-size: 2rem;
-    line-height: 1.05;                /* compact cap height for crisp top lock */
-    position: relative;
-    top: {title_nudge_px}px;          /* micro‑tune title */
-    color: #0B1F3B;
-  }}
-  .lc-sub {{
-    margin: 0;
-    font-size: 1.05rem;
-    line-height: 1.10;                /* slightly tight so bottom sits low */
-    margin-top: auto;                 /* PUSH subtitle to the bottom edge */
-    position: relative;
-    top: {sub_nudge_px}px;            /* micro‑tune subtitle baseline */
-    color: #0B1F3B; opacity: 0.90;
-  }}
-  @media (max-width: 680px) {{
-    .lc-logo {{ height: {icon_height_mobile}px; }}
-    .lc-text {{ height: {icon_height_mobile}px; }}
-    .lc-title {{ font-size: 1.6rem; }}
-  }}
-</style>
-
-<div class="lc-hero">
-  <img class="lc-logo" src="{img_data_uri}" alt="Lamfalussy Code logo" />
-  <div class="lc-text">
-    <div class="lc-title">{title}</div>
-    <div class="lc-sub">{subhead}</div>
-  </div>
-</div>
-<hr style="border:none;border-top:1px solid #E7EAF0;margin:12px 0 8px 0;">
-""",
-        unsafe_allow_html=True
-    )
-
-# === APP BAR (authenticated) — mirrors landing layout, compact ===
-def render_brand_bar_aligned(
-    icon_src: str = "assets/lamfalussy_L_128.png",   # smaller source image for the bar
-    title: str = "Lamfalussy Code",
-    subhead: str = "Your European Capital Markets Law AI Mentor.",
-    bar_height_desktop: int = 44,                    # total icon/text height in the bar
-    bar_height_mobile: int = 38,                     # mobile height
-    logo_top_nudge_px: int = 0,                      # +down / -up (logo micro‑tune)
-    title_nudge_px: int = 0,                         # +down / -up (title micro‑tune)
-    sub_nudge_px: int = 0                            # +down / -up (subtitle micro‑tune)
-):
-    """
-    Compact app bar header where:
-      • top of title == top of logo
-      • bottom of subtitle == bottom of logo
-    Mirrors the landing layout at a smaller scale.
-    """
-    import streamlit as st
-    import base64, mimetypes
-
-    # Build a data‑URI so the logo always renders in the HTML block
+    icon_height_desktop: int = 96,                     # px on desktop
+    icon_height_mobile: int = 72,                      # px on small screens
+    logo_top_nudge_px: int = 0,                        # +down / -up (logo fine‑tune)
+    title_nudge_px: int = 0,                           # +down / -up (title fine‑tune)
+    sub_nudge_px: int = 0                              # +down / -up (subtitle fine‑tune)
+) -> None:
+    # embed image as data-URI (always renders in HTML blocks)
     try:
         mime, _ = mimetypes.guess_type(icon_src)
         if not mime:
@@ -133,7 +38,86 @@ def render_brand_bar_aligned(
     st.markdown(
         f"""
 <style>
-  /* Bar chrome (light card look, minimal padding) */
+  .lc-hero {{
+    display: flex;
+    align-items: flex-start;             /* lock logo top to text top */
+    gap: 16px;
+    margin: 2px 0 10px 0;
+  }}
+  .lc-logo {{
+    height: {icon_height_desktop}px;
+    width: auto;
+    display: block;
+    position: relative;
+    top: {-logo_top_nudge_px}px;         /* negative lifts, positive lowers */
+  }}
+  .lc-text {{
+    display: flex;
+    flex-direction: column;
+    height: {icon_height_desktop}px;     /* SAME height as logo */
+  }}
+  .lc-title {{
+    margin: 0;
+    font-weight: 800;
+    font-size: 2rem;
+    line-height: 1.05;                   /* compact cap height for crisp top lock */
+    position: relative;
+    top: {title_nudge_px}px;
+    color: #0B1F3B;
+  }}
+  .lc-sub {{
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.10;                   /* slightly tight so bottom sits low */
+    margin-top: auto;                    /* pin subtitle to bottom edge */
+    position: relative;
+    top: {sub_nudge_px}px;               /* +down / -up */
+    color: #0B1F3B; opacity: 0.90;
+  }}
+  @media (max-width: 680px) {{
+    .lc-logo {{ height: {icon_height_mobile}px; }}
+    .lc-text {{ height: {icon_height_mobile}px; }}
+    .lc-title {{ font-size: 1.6rem; }}
+  }}
+</style>
+
+<div class="lc-hero">
+  <img class="lc-logo" src="{img_data_uri}" alt="Lamfalussy Code logo"/>
+  <div class="lc-text">
+    <div class="lc-title">{title}</div>
+    <div class="lc-sub">{subhead}</div>
+  </div>
+</div>
+<hr style="border:none;border-top:1px solid #E7EAF0;margin:12px 0 8px 0;">
+""",
+        unsafe_allow_html=True,
+    )
+
+# === APP BAR (authenticated) — mirrors landing layout, compact ===
+def render_brand_bar_aligned(
+    icon_src: str = "assets/lamfalussy_L_128.png",
+    title: str = "Lamfalussy Code",
+    subhead: str = "Your European Capital Markets Law AI Mentor.",
+    bar_height_desktop: int = 44,
+    bar_height_mobile: int = 38,
+    logo_top_nudge_px: int = 0,
+    title_nudge_px: int = 0,
+    sub_nudge_px: int = 0
+) -> None:
+    # embed image as data-URI
+    try:
+        mime, _ = mimetypes.guess_type(icon_src)
+        if not mime:
+            mime = "image/png"
+        with open(icon_src, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        img_data_uri = f"data:{mime};base64,{b64}"
+    except Exception:
+        img_data_uri = icon_src
+
+    st.markdown(
+        f"""
+<style>
   .lc-appbar {{
     background: #F6F8FC;
     border: 1px solid #E7EAF0;
@@ -143,26 +127,26 @@ def render_brand_bar_aligned(
   }}
   .lc-appbar-row {{
     display: flex;
-    align-items: flex-start;              /* lock logo top to text top */
+    align-items: flex-start;             /* lock logo top to text top */
     gap: 10px;
   }}
   .lc-appbar-logo {{
-    height: {bar_height_desktop}px;       /* governs the entire bar height */
+    height: {bar_height_desktop}px;
     width: auto;
     display: block;
     position: relative;
-    top: {-logo_top_nudge_px}px;          /* negative lifts, positive lowers */
+    top: {-logo_top_nudge_px}px;
   }}
   .lc-appbar-text {{
     display: flex;
     flex-direction: column;
-    height: {bar_height_desktop}px;       /* SAME height as logo */
+    height: {bar_height_desktop}px;      /* SAME height as logo */
     min-height: {bar_height_desktop}px;
   }}
   .lc-appbar-title {{
     margin: 0;
     font-weight: 700;
-    font-size: 1.12rem;                   /* compact vs landing */
+    font-size: 1.12rem;
     line-height: 1.08;
     position: relative;
     top: {title_nudge_px}px;
@@ -172,7 +156,7 @@ def render_brand_bar_aligned(
     margin: 0;
     font-size: 0.95rem;
     line-height: 1.08;
-    margin-top: auto;                     /* pin subtitle to bottom edge */
+    margin-top: auto;                    /* pin subtitle to bottom edge */
     position: relative;
     top: {sub_nudge_px}px;
     color: #0B1F3B; opacity: 0.90;
@@ -187,7 +171,7 @@ def render_brand_bar_aligned(
 
 <div class="lc-appbar">
   <div class="lc-appbar-row">
-    <img class="lc-appbar-logo" src="{img_data_uri}" alt="Lamfalussy Code logo">
+    <img class="lc-appbar-logo" src="{img_data_uri}" alt="Lamfalussy Code icon"/>
     <div class="lc-appbar-text">
       <div class="lc-appbar-title">{title}</div>
       <div class="lc-appbar-sub">{subhead}</div>
@@ -195,7 +179,7 @@ def render_brand_bar_aligned(
   </div>
 </div>
 """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 # =============================
@@ -529,16 +513,13 @@ if not st.session_state.authenticated:
         unsafe_allow_html=True,
     )
     
+    # Landing
     render_brand_hero_aligned(
         icon_src="assets/lamfalussy_L_256.png",
         title="Lamfalussy Code",
         subhead="Your European Capital Markets Law AI Mentor.",
-        icon_height_desktop=96,
-        icon_height_mobile=72,
-        # micro‑tuning for your screenshot:
-        logo_top_nudge_px=1,    # lift logo by ~1 px (rounded top)
-        title_nudge_px=20,      # lift title by ~1 px
-        sub_nudge_px=-20          # push subtitle down by ~1 px
+        icon_height_desktop=96, icon_height_mobile=72,
+        logo_top_nudge_px=0, title_nudge_px=0, sub_nudge_px=0
     )
            
     STUDENT_PIN = st.secrets.get("STUDENT_PIN")
@@ -584,14 +565,11 @@ if not st.session_state.authenticated:
 
 # Compact brand bar (authenticated pages only)
 render_brand_bar_aligned(
-    icon_src="assets/lamfalussy_L_128.png",        # small source icon
+    icon_src="assets/lamfalussy_L_128.png",
     title="Lamfalussy Code",
     subhead="Your European Capital Markets Law AI Mentor.",
-    bar_height_desktop=44,                         # matches smaller look
-    bar_height_mobile=38,
-    logo_top_nudge_px=0,                           # micro‑tune if needed
-    title_nudge_px=22,
-    sub_nudge_px=-22
+    bar_height_desktop=44, bar_height_mobile=38,
+    logo_top_nudge_px=0, title_nudge_px=0, sub_nudge_px=0
 )
 
 # --- Build retrievers once ---
