@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<title>Lamfalussy Code – 4‑Level L icon</title>
+<desc>A stylized L made from four horizontal rounded bars representing the four Lamfalussy levels.</desc>
+<rect x="128" y="164" width="360" height="120" rx="60" ry="60" fill="#123B7A"/>
+<rect x="128" y="356" width="520" height="120" rx="60" ry="60" fill="#123B7A"/>
+<rect x="128" y="548" width="680" height="120" rx="60" ry="60" fill="#123B7A"/>
+<rect x="128" y="740" width="800" height="120" rx="60" ry="60" fill="#123B7A"/>
+</svg>
