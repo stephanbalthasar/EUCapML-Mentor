@@ -7,49 +7,47 @@ import requests
 import streamlit as st
 
 # === HELPERS ===
-# === BRAND HEADER (precise alignment | data-URI image | adjustable) ===
+# === BRAND HEADER (precise alignment | data‑URI image) ===
 def render_brand_hero_aligned(
     icon_src: str = "assets/lamfalussy_L_256.png",   # image file path (PNG/SVG/JPG)
     title: str = "Lamfalussy Code",
     subhead: str = "Your European Capital Markets Law Mentor.",
     icon_height_desktop: int = 96,                   # px on desktop
     icon_height_mobile: int = 72,                    # px on small screens
-    sub_nudge_px: int = 0,                           # signed px: +down / -up (subtitle fine-tune)
-    logo_top_nudge_px: int = 0,                      # signed px: +down / -up (logo fine-tune)
-    icon_png: str | None = None                      # legacy alias (if some calls still pass icon_png)
+    sub_nudge_px: int = 0,                           # +down / -up — fine‑tune subtitle baseline
+    logo_top_nudge_px: int = 0,                      # +down / -up — fine‑tune logo top
+    icon_png: str | None = None                      # legacy alias so old calls won’t break
 ):
     """
-    Landing hero with exact vertical alignment:
-      • top of logo == top of title (via flex + optional logo_top_nudge_px)
-      • bottom of logo == bottom of subtitle (via equal heights + space-between + sub_nudge_px)
-
-    Uses a data-URI for the <img> to avoid path issues in HTML blocks.
+    Renders the landing hero with exact vertical alignment:
+      • top of logo == top of title
+      • bottom of logo == bottom of subtitle
+    Uses a base64 data‑URI <img> so the logo always shows.
     """
     import streamlit as st
     import base64, mimetypes
 
-    # Backwards-compat alias
+    # Back‑compat alias
     if icon_png:
         icon_src = icon_png
 
-    # Read and embed image as data-URI so it *always* renders
+    # Read image and embed as data‑URI (fallback to path if needed)
     try:
         mime, _ = mimetypes.guess_type(icon_src)
         if not mime:
             mime = "image/png"
         with open(icon_src, "rb") as f:
             b64 = base64.b64encode(f.read()).decode("ascii")
-        img_data_uri = f"data:{mime};base64,{b64}"
+        img_tag = f'<img class="lc-logo" src="data:{mime};base64,{b64}" alt="Lamfalussy Code logo">'
     except Exception:
-        # Fallback to path if reading fails
-        img_data_uri = icon_src
+        img_tag = f'<img class="lc-logo" src="{icon_src}" alt="Lamfalussy Code logo">'
 
     st.markdown(
         f"""
 <style>
   .lc-hero {{
     display: flex;
-    align-items: flex-start;     /* align logo top with text block top */
+    align-items: flex-start;     /* aligns logo top with text block top */
     gap: 16px;
     margin: 2px 0 10px 0;
   }}
@@ -58,7 +56,7 @@ def render_brand_hero_aligned(
     width: auto;
     display: block;
     position: relative;
-    top: { -logo_top_nudge_px }px;  /* negative lifts logo up, positive pushes down */
+    top: { -logo_top_nudge_px }px; /* negative lifts logo up, positive pushes down */
   }}
   .lc-text {{
     display: flex;
@@ -68,9 +66,9 @@ def render_brand_hero_aligned(
   }}
   .lc-title {{
     margin: 0;
-    font-weight: 700;
+    font-weight: 800;
     font-size: 2rem;
-    line-height: 1.12;           /* compact so the top sits crisply with the logo */
+    line-height: 1.12;           /* compact so top sits crisply with the logo */
     color: #0B1F3B;
   }}
   .lc-sub {{
@@ -79,7 +77,7 @@ def render_brand_hero_aligned(
     line-height: 1.12;
     color: #0B1F3B;
     opacity: 0.90;
-    transform: translateY({sub_nudge_px}px);  /* +down / -up baseline micro-tune */
+    transform: translateY({sub_nudge_px}px);  /* +down / -up — baseline micro‑tune */
   }}
   @media (max-width: 680px) {{
     .lc-logo {{ height: {icon_height_mobile}px; }}
@@ -89,10 +87,10 @@ def render_brand_hero_aligned(
 </style>
 
 <div class="lc-hero">
-  <img class="lc-logo" src="{img_data_uri}" alt="Lamfalussy Code logo"/>
+  {img_tag}
   <div class="lc-text">
-    <h1 class="lc-title">{title}</h1>
-    <p class="lc-sub">{subhead}</p>
+    <div class="lc-title">{title}</div>
+    <div class="lc-sub">{subhead}</div>
   </div>
 </div>
 <hr style="border:none;border-top:1px solid #E7EAF0;margin:12px 0 8px 0;">
