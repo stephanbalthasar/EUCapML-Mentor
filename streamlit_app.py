@@ -190,51 +190,91 @@ def render_sticky_footer():
     st.markdown(
         """
         <style>
-          /* --- Sticky, single-line footer --- */
-          .sb-sticky-foot{
-            position: fixed; bottom: 0; left: 0; right: 0;
-            background: #ffffff;
-            border-top: 1px solid #E7EAF0;
-            box-shadow: 0 -2px 8px rgba(5,16,28,0.06);
-            z-index: 9999;
-          }
-          .sb-sticky-foot .sb-inner{
-            max-width: 1120px;      /* keep in sync with your global page cap */
-            margin: 0 auto;
-            display: flex; align-items: center;
-            gap: 12px; padding: 8px 12px;
-            white-space: nowrap;    /* keep it on one visual line */
-          }
-          /* Left-side "button" (actually a link) */
-          .sb-foot-btn{
-            display: inline-block;
-            background: #123B7A; color: #fff !important;
-            border: 1px solid #123B7A;
-            padding: 6px 12px; border-radius: 999px;
-            text-decoration: none; font-weight: 600; font-size: 0.9rem;
-          }
-          .sb-foot-btn:hover{ background:#0F2D5A; border-color:#0F2D5A; }
-          .sb-foot-btn:focus-visible{ outline: 2px solid #1464A5; outline-offset: 2px; }
+        /* --- Sticky footer --- */
+        .sb-sticky-foot{
+          position: fixed; bottom: 0; left: 0; right: 0;
+          background: #ffffff;
+          border-top: 1px solid #E7EAF0;
+          box-shadow: 0 -2px 8px rgba(5,16,28,0.06);
+          z-index: 9999;
+          /* Respect iOS home indicator / safe area */
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
 
-          /* Right-side info text (truncates on small screens) */
-          .sb-footnote{
-            color: #5B677A; font-size: 0.9rem;
-            overflow: hidden; text-overflow: ellipsis;
-          }
+        .sb-sticky-foot .sb-inner{
+          max-width: 1120px;
+          margin: 0 auto;
+          display: flex; align-items: center;
+          gap: 12px; padding: 8px 12px;
+          /* Allow wrapping on small screens */
+          white-space: normal;
+          flex-wrap: wrap;
+        }
 
-          /* Ensure page content isn't hidden behind the sticky footer */
-          .block-container{ padding-bottom: 64px !important; }
+        .sb-foot-btn{
+          display: inline-block;
+          background: #123B7A; color: #fff !important;
+          border: 1px solid #123B7A;
+          padding: 6px 12px; border-radius: 999px;
+          text-decoration: none; font-weight: 600; font-size: 0.9rem;
+        }
+        .sb-foot-btn:hover{ background:#0F2D5A; border-color:#0F2D5A; }
+        .sb-foot-btn:focus-visible{ outline: 2px solid #1464A5; outline-offset: 2px; }
+
+        .sb-footnote{
+          color: #5B677A; font-size: 0.9rem;
+        }
+
+        /* --- Reserve space for the sticky footer, dynamically --- */
+        :root{
+          /* Updated by JS below */
+          --sb-foot-h: 72px;
+        }
+
+        /* Pad the main content so it never hides behind the footer.
+           Apply to both common Streamlit containers to be robust across versions. */
+        .block-container,
+        section.main > div {
+          padding-bottom: calc(var(--sb-foot-h, 72px) + env(safe-area-inset-bottom, 0px)) !important;
+        }
+
+        /* A little extra bottom air for very small viewports */
+        @media (max-width: 480px) {
+          .block-container,
+          section.main > div {
+            padding-bottom: calc(var(--sb-foot-h, 72px) + env(safe-area-inset-bottom, 0px) + 12px) !important;
+          }
+        }
         </style>
 
         <div class="sb-sticky-foot">
           <div class="sb-inner">
-            <a class="sb-foot-btn" href="?show_privacy=1">AI &amp; Privacy Notice</a>
+            <a class="sb-foot-btn" href="?show_privacy=1">AI & Privacy Notice</a>
             <div class="sb-footnote">
-              © 2026 Stephan Balthasar · This app uses AI &amp; LLMs; outputs may be inaccurate; no liability.
+              © 2026 Stephan Balthasar · This app uses AI & LLMs; outputs may be inaccurate; no liability.
               Feedback is not a grade predictor.
             </div>
           </div>
         </div>
+
+        <script>
+          (function() {
+            function setFootHeight(){
+              try{
+                var f = document.querySelector('.sb-sticky-foot');
+                var h = f ? f.offsetHeight : 72;
+                document.documentElement.style.setProperty('--sb-foot-h', h + 'px');
+              } catch(e) {}
+            }
+            window.addEventListener('load', setFootHeight);
+            window.addEventListener('resize', setFootHeight);
+            window.addEventListener('orientationchange', setFootHeight);
+
+            // If Streamlit re-renders parts of the DOM, keep the measurement fresh
+            var obs = new MutationObserver(setFootHeight);
+            obs.observe(document.body, {childList: true, subtree: true});
+          })();
+        </script>
         """,
         unsafe_allow_html=True,
     )
@@ -363,7 +403,7 @@ if not st.session_state.authenticated:
         <style>
         div[data-testid="stSidebar"] { display: none !important; }
         /* Slightly tighten top/bottom padding while the sidebar is hidden */
-        .block-container { padding-top: 0.75rem !important; padding-bottom: 2rem !important; }
+        .block-container { padding-top: 0.75rem !important; }
         </style>
         """,
         unsafe_allow_html=True,
