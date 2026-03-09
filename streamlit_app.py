@@ -526,8 +526,8 @@ if not st.session_state.authenticated:
         icon_height_mobile=72,
         # micro‑tuning for your screenshot:
         logo_top_nudge_px=1,    # lift logo by ~1 px (rounded top)
-        title_nudge_px=-1,      # lift title by ~1 px
-        sub_nudge_px=1          # push subtitle down by ~1 px
+        title_nudge_px=20,      # lift title by ~1 px
+        sub_nudge_px=-20          # push subtitle down by ~1 px
     )
            
     STUDENT_PIN = st.secrets.get("STUDENT_PIN")
