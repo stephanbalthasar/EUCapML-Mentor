@@ -101,8 +101,8 @@ def render_brand_bar_aligned(
     bar_height_desktop: int = 44,
     bar_height_mobile: int = 38,
     logo_top_nudge_px: int = 0,
-    title_nudge_px: int = 0,
-    sub_nudge_px: int = 0
+    title_nudge_px: int = 15,
+    sub_nudge_px: int = -15
 ) -> None:
     # embed image as data-URI
     try:
@@ -519,7 +519,7 @@ if not st.session_state.authenticated:
         title="Lamfalussy Code",
         subhead="Your European Capital Markets Law AI Mentor.",
         icon_height_desktop=96, icon_height_mobile=72,
-        logo_top_nudge_px=0, title_nudge_px=0, sub_nudge_px=0
+        logo_top_nudge_px=0, title_nudge_px=22, sub_nudge_px=-22
     )
            
     STUDENT_PIN = st.secrets.get("STUDENT_PIN")
