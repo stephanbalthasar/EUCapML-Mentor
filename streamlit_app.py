@@ -338,6 +338,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# === Load brand CSS (scoped details not covered by theme) ===
+try:
+    with open("assets/theme.css", "r", encoding="utf-8") as _f:
+        st.markdown(f"<style>{_f.read()}</style>", unsafe_allow_html=True)
+except Exception:
+    pass
+
 # === PATCH 2: always-on footer and optional overlay ===
 render_privacy_overlay_if_requested()
 render_sticky_footer()
