@@ -7,22 +7,24 @@ import requests
 import streamlit as st
 
 # === HELPERS ===
-# === BRAND HEADER (precise alignment | data‑URI image) ===
+# === BRAND HEADER (precise alignment | data‑URI image | 3 micro‑nudges) ===
 def render_brand_hero_aligned(
-    icon_src: str = "assets/lamfalussy_L_256.png",   # image file path (PNG/SVG/JPG)
+    icon_src: str = "assets/lamfalussy_L_256.png",   # PNG/SVG/JPG path
     title: str = "Lamfalussy Code",
     subhead: str = "Your European Capital Markets Law Mentor.",
     icon_height_desktop: int = 96,                   # px on desktop
     icon_height_mobile: int = 72,                    # px on small screens
-    sub_nudge_px: int = 0,                           # +down / -up — fine‑tune subtitle baseline
-    logo_top_nudge_px: int = 0,                      # +down / -up — fine‑tune logo top
-    icon_png: str | None = None                      # legacy alias so old calls won’t break
+    logo_top_nudge_px: int = 0,                      # +down / -up (adjust logo box)
+    title_nudge_px: int = 0,                         # +down / -up (adjust title)
+    sub_nudge_px: int = 0,                           # +down / -up (adjust subtitle baseline)
+    icon_png: str | None = None                      # legacy alias (kept so old calls don't crash)
 ):
     """
-    Renders the landing hero with exact vertical alignment:
+    Renders a landing hero where:
       • top of logo == top of title
-      • bottom of logo == bottom of subtitle
-    Uses a base64 data‑URI <img> so the logo always shows.
+      • bottom of logo == bottom of subtitle (approx. baseline, with sub_nudge_px for fine tuning)
+
+    Uses a data‑URI <img class="lc-logo" ...> so the logo always displays.
     """
     import streamlit as st
     import base64, mimetypes
@@ -31,23 +33,23 @@ def render_brand_hero_aligned(
     if icon_png:
         icon_src = icon_png
 
-    # Read image and embed as data‑URI (fallback to path if needed)
+    # Build a data‑URI so <img> always renders
     try:
         mime, _ = mimetypes.guess_type(icon_src)
         if not mime:
             mime = "image/png"
         with open(icon_src, "rb") as f:
             b64 = base64.b64encode(f.read()).decode("ascii")
-        img_tag = f'<img class="lc-logo" src="data:{mime};base64,{b64}" alt="Lamfalussy Code logo">'
+        img_data_uri = f"data:{mime};base64,{b64}"
     except Exception:
-        img_tag = f'<img class="lc-logo" src="{icon_src}" alt="Lamfalussy Code logo">'
+        img_data_uri = icon_src  # fallback to path
 
     st.markdown(
         f"""
 <style>
   .lc-hero {{
     display: flex;
-    align-items: flex-start;     /* aligns logo top with text block top */
+    align-items: flex-start;          /* lock logo top to text block top */
     gap: 16px;
     margin: 2px 0 10px 0;
   }}
@@ -56,28 +58,31 @@ def render_brand_hero_aligned(
     width: auto;
     display: block;
     position: relative;
-    top: { -logo_top_nudge_px }px; /* negative lifts logo up, positive pushes down */
+    top: { -logo_top_nudge_px }px;    /* negative lifts logo up, positive pushes down */
   }}
   .lc-text {{
     display: flex;
     flex-direction: column;
-    justify-content: space-between; /* title at top, subtitle at bottom */
+    justify-content: space-between;   /* title top, subtitle bottom */
     height: {icon_height_desktop}px;
   }}
   .lc-title {{
     margin: 0;
     font-weight: 800;
     font-size: 2rem;
-    line-height: 1.12;           /* compact so top sits crisply with the logo */
+    line-height: 1.05;                /* compact cap height for cleaner top alignment */
+    position: relative;
+    top: { title_nudge_px }px;        /* micro‑tune title */
     color: #0B1F3B;
   }}
   .lc-sub {{
     margin: 0;
     font-size: 1.05rem;
-    line-height: 1.12;
+    line-height: 1.10;                /* slightly tight so bottom sits nearer the baseline */
     color: #0B1F3B;
     opacity: 0.90;
-    transform: translateY({sub_nudge_px}px);  /* +down / -up — baseline micro‑tune */
+    position: relative;
+    top: { sub_nudge_px }px;          /* micro‑tune subtitle baseline (negative raises) */
   }}
   @media (max-width: 680px) {{
     .lc-logo {{ height: {icon_height_mobile}px; }}
@@ -87,7 +92,7 @@ def render_brand_hero_aligned(
 </style>
 
 <div class="lc-hero">
-  {img_tag}
+  <img class="lc-logo" src="{img_data_uri}" alt="Lamfalussy Code logo" />
   <div class="lc-text">
     <div class="lc-title">{title}</div>
     <div class="lc-sub">{subhead}</div>
@@ -522,8 +527,10 @@ if not st.session_state.authenticated:
         subhead="Your European Capital Markets Law Mentor.",
         icon_height_desktop=96,
         icon_height_mobile=72,
-        logo_top_nudge_px=1,  # lifts logo by 1px to compensate for the rounded top cap
-        sub_nudge_px=-1       # raises the subtitle baseline by ~1px
+        # micro‑tuning:
+        logo_top_nudge_px=2,   # move logo UP by ~2px
+        title_nudge_px=-1,     # move title UP by ~1px
+        sub_nudge_px=2         # move subtitle DOWN by ~2px
     )
         
     STUDENT_PIN = st.secrets.get("STUDENT_PIN")
