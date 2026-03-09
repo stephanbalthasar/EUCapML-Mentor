@@ -1,13 +1,13 @@
-# EUCapML-Mentor
+# Balthasar's Code - Your European Capital Markets Law AI Mentor
 An app for students in the Bayreuth University EU Capital Markets Law course
-EUCapML Mentor is a modular, privacy‑respecting digital tutor for European and German capital markets law.  
+Balthasar's Code is a modular, privacy‑respecting digital tutor for European and German capital markets law.  
 It provides two distinct learning modes:
 
 1. **Exam‑style self‑testing** using sample cases and AI‑generated feedback  
 2. **RAG‑augmented legal tutoring** using the course booklet + selected EU/DE sources
 
 The system is designed to be lightweight, explainable, and easily maintainable.  
-This repository contains **v2**, a complete redesign based on modular, testable components.
+This repository contains a complete redesign of a previous version, based on modular, testable components.
 
 ---
 
