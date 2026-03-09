@@ -519,7 +519,7 @@ if not st.session_state.authenticated:
         title="Lamfalussy Code",
         subhead="Your European Capital Markets Law AI Mentor.",
         icon_height_desktop=96, icon_height_mobile=72,
-        logo_top_nudge_px=0, title_nudge_px=20   , sub_nudge_px=-20
+        logo_top_nudge_px=0, title_nudge_px= 20, sub_nudge_px= -20
     )
            
     STUDENT_PIN = st.secrets.get("STUDENT_PIN")
