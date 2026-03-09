@@ -100,21 +100,104 @@ def render_brand_hero_aligned(
         unsafe_allow_html=True
     )
 
-def render_brand_bar(
-    icon_path: str = "assets/lamfalussy_L_128.png",
+# === APP BAR (authenticated) — mirrors landing layout, compact ===
+def render_brand_bar_aligned(
+    icon_src: str = "assets/lamfalussy_L_128.png",   # smaller source image for the bar
     title: str = "Lamfalussy Code",
-    subhead: str = "Your European Capital Markets Law AI Mentor."
+    subhead: str = "Your European Capital Markets Law AI Mentor.",
+    bar_height_desktop: int = 44,                    # total icon/text height in the bar
+    bar_height_mobile: int = 38,                     # mobile height
+    logo_top_nudge_px: int = 0,                      # +down / -up (logo micro‑tune)
+    title_nudge_px: int = 0,                         # +down / -up (title micro‑tune)
+    sub_nudge_px: int = 0                            # +down / -up (subtitle micro‑tune)
 ):
     """
-    Compact header for authenticated pages: small icon + bold title + caption.
+    Compact app bar header where:
+      • top of title == top of logo
+      • bottom of subtitle == bottom of logo
+    Mirrors the landing layout at a smaller scale.
     """
     import streamlit as st
-    col1, col2 = st.columns([1, 24])
-    with col1:
-        st.image(icon_path, width=28)
-    with col2:
-        st.markdown(f"**{title}**")
-        st.caption(subhead)
+    import base64, mimetypes
+
+    # Build a data‑URI so the logo always renders in the HTML block
+    try:
+        mime, _ = mimetypes.guess_type(icon_src)
+        if not mime:
+            mime = "image/png"
+        with open(icon_src, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        img_data_uri = f"data:{mime};base64,{b64}"
+    except Exception:
+        img_data_uri = icon_src  # fallback path
+
+    st.markdown(
+        f"""
+<style>
+  /* Bar chrome (light card look, minimal padding) */
+  .lc-appbar {{
+    background: #F6F8FC;
+    border: 1px solid #E7EAF0;
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin: 6px 0 12px 0;
+  }}
+  .lc-appbar-row {{
+    display: flex;
+    align-items: flex-start;              /* lock logo top to text top */
+    gap: 10px;
+  }}
+  .lc-appbar-logo {{
+    height: {bar_height_desktop}px;       /* governs the entire bar height */
+    width: auto;
+    display: block;
+    position: relative;
+    top: {-logo_top_nudge_px}px;          /* negative lifts, positive lowers */
+  }}
+  .lc-appbar-text {{
+    display: flex;
+    flex-direction: column;
+    height: {bar_height_desktop}px;       /* SAME height as logo */
+    min-height: {bar_height_desktop}px;
+  }}
+  .lc-appbar-title {{
+    margin: 0;
+    font-weight: 700;
+    font-size: 1.12rem;                   /* compact vs landing */
+    line-height: 1.08;
+    position: relative;
+    top: {title_nudge_px}px;
+    color: #0B1F3B;
+  }}
+  .lc-appbar-sub {{
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.08;
+    margin-top: auto;                     /* pin subtitle to bottom edge */
+    position: relative;
+    top: {sub_nudge_px}px;
+    color: #0B1F3B; opacity: 0.90;
+  }}
+  @media (max-width: 680px) {{
+    .lc-appbar-logo {{ height: {bar_height_mobile}px; }}
+    .lc-appbar-text {{ height: {bar_height_mobile}px; min-height: {bar_height_mobile}px; }}
+    .lc-appbar-title {{ font-size: 1.02rem; }}
+    .lc-appbar-sub {{ font-size: 0.9rem; }}
+  }}
+</style>
+
+<div class="lc-appbar">
+  <div class="lc-appbar-row">
+    <img class="lc-appbar-logo" src="{img_data_uri}" alt="Lamfalussy Code logo">
+    <div class="lc-appbar-text">
+      <div class="lc-appbar-title">{title}</div>
+      <div class="lc-appbar-sub">{subhead}</div>
+    </div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True
+    )
 
 # =============================
 # Conversation utilities (DRY)
@@ -572,7 +655,16 @@ if not st.session_state.authenticated:
     st.stop()
 
 # Compact brand bar (authenticated pages only)
-render_brand_bar()
+render_brand_bar_aligned(
+    icon_src="assets/lamfalussy_L_128.png",        # small source icon
+    title="Lamfalussy Code",
+    subhead="Your European Capital Markets Law AI Mentor.",
+    bar_height_desktop=44,                         # matches smaller look
+    bar_height_mobile=38,
+    logo_top_nudge_px=0,                           # micro‑tune if needed
+    title_nudge_px=20,
+    sub_nudge_px=-20
+)
 
 # --- Build retrievers once ---
 para_retriever = ParagraphRetriever(INDEX["paragraphs"])
