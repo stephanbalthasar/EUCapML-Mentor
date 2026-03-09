@@ -569,7 +569,7 @@ render_brand_bar_aligned(
     title="Lamfalussy Code",
     subhead="Your European Capital Markets Law AI Mentor.",
     bar_height_desktop=44, bar_height_mobile=38,
-    logo_top_nudge_px=0, title_nudge_px=5, sub_nudge_px=-5
+    logo_top_nudge_px=0, title_nudge_px=3, sub_nudge_px=-3
 )
 
 # --- Build retrievers once ---
