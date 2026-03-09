@@ -351,42 +351,55 @@ if "role" not in st.session_state:
 # === PATCH 3: login gate ===
 if not st.session_state.authenticated:
     # Hide the sidebar on the landing page only
-    st.markdown("""
-    <style>
-      div[data-testid="stSidebar"] { display: none !important; }
-      /* Slightly tighten top/bottom padding while the sidebar is hidden */
-      .block-container { padding-top: 0.75rem !important; padding-bottom: 2rem !important; }
-    </style>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stSidebar"] { display: none !important; }
+        /* Slightly tighten top/bottom padding while the sidebar is hidden */
+        .block-container { padding-top: 0.75rem !important; padding-bottom: 2rem !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     # Flat navy hero (no CTAs here)
     render_flat_navy_hero(
         title="European Capital Markets Law - Digital Mentor",
         subtitle="Master your Capital Markets Law Class with Confidence",
-        logo_path="assets/logo.png"  # or None if you don’t want a logo
+        logo_path="assets/logo.png",  # or None if you don’t want a logo
     )
-    
+
     STUDENT_PIN = st.secrets.get("STUDENT_PIN")
     TUTOR_PIN   = st.secrets.get("TUTOR_PIN")
 
-    pin = st.text_input("Enter password", type="password")
-
-    # Show the consent checkbox only after a correct PIN is typed
-    role_detected = None
-    if pin and pin == STUDENT_PIN:
-        role_detected = "student"
-        st.success("Password accepted.")
-    elif pin and pin == TUTOR_PIN:
-        role_detected = "tutor"
-        st.success("PIN accepted (tutor).")
-    elif pin:
-        st.error("Incorrect PIN. Please try again.")
-
-    if role_detected:
+    # --- Simple, robust login form ---
+    # Requirements: show password + checkbox at the same time; allow Enter OR button click.
+    with st.form(key="login_form", clear_on_submit=False):
+        pin = st.text_input("Enter password", type="password")
         agree = st.checkbox(
             "I confirm I took note of the AI & Privacy Notice (see the blue button in the footer)."
         )
-        st.caption("You must accept to continue.")
-        if st.button("Continue", type="primary", disabled=not agree):
+        submitted = st.form_submit_button("Continue", type="primary")
+
+    if submitted:
+        role_detected = None
+        if pin and STUDENT_PIN and pin == STUDENT_PIN:
+            role_detected = "student"
+        elif pin and TUTOR_PIN and pin == TUTOR_PIN:
+            role_detected = "tutor"
+
+        # Collect validation messages per spec
+        messages = []
+        if role_detected is None:
+            messages.append("Incorrect password")
+        if not agree:
+            messages.append("Tick the box first")
+
+        if messages:
+            for m in messages:
+                st.error(m)
+        else:
+            # Successful login
             st.session_state.authenticated = True
             st.session_state.role = role_detected
             if role_detected == "student":
