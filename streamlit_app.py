@@ -7,21 +7,20 @@ import requests
 import streamlit as st
 
 # === HELPERS ===
-# === BRAND HEADERS (simple & robust) ===
 # === BRAND HEADER (precise alignment) ===
+# === BRAND HEADER (precise alignment | fixed) ===
 def render_brand_hero_aligned(
-    icon_png: str = "assets/lamfalussy_L_256.png",   # use PNG here for reliable HTML <img> loading
+    icon_src: str = "assets/lamfalussy_L_256.png",  # use PNG for reliable <img src="..."> loading
     title: str = "Lamfalussy Code",
     subhead: str = "Your European Capital Markets Law Mentor.",
     icon_height_desktop: int = 96,   # px on desktop
     icon_height_mobile: int = 72,    # px on small screens
-    nudge_px: int = 0                # fine-tune knob (0..3) if you want baseline-perfect bottom alignment
+    nudge_px: int = 0                # 0..2px micro-nudge if you want the subhead baseline a hair lower
 ):
     """
     Landing hero where the logo and the text block share the same height:
-    - Title is anchored to the TOP of the block.
-    - Subtitle is anchored to the BOTTOM of the block.
-    This guarantees: logo-top == title-top AND logo-bottom == subtitle-bottom.
+    - Title anchored to TOP, subtitle anchored to BOTTOM.
+    - Guarantees: logo-top == title-top, logo-bottom == subtitle-bottom.
     """
     import streamlit as st
 
@@ -31,7 +30,7 @@ def render_brand_hero_aligned(
   /* Container: logo + text */
   .lc-hero {{
     display: flex;
-    align-items: flex-start;        /* align tops of logo and text */
+    align-items: flex-start;        /* align the tops of logo and text block */
     gap: 16px;
     margin: 2px 0 10px 0;
   }}
@@ -41,31 +40,31 @@ def render_brand_hero_aligned(
     width: auto;
     display: block;
   }}
-  /* The text column gets the SAME height as the logo */
+  /* Text column equals logo height; top & bottom distributed */
   .lc-text {{
     display: flex;
     flex-direction: column;
     justify-content: space-between; /* title top, subtitle bottom */
     height: {icon_height_desktop}px;
   }}
-  /* Title: bold, zero margins */
+  /* Title */
   .lc-title {{
     margin: 0;
     font-weight: 700;
     font-size: 2rem;
-    line-height: 1.12;              /* keep compact so top lines up crisply */
-    color: var(--text-color, #0B1F3B);
+    line-height: 1.12;
+    color: #0B1F3B;
   }}
-  /* Subtitle: zero margins; small transform lets you micro-adjust bottom baseline */
+  /* Subtitle */
   .lc-sub {{
     margin: 0;
     font-size: 1.05rem;
     line-height: 1.12;
-    color: var(--text-color, #0B1F3B);
+    color: #0B1F3B;
     opacity: 0.92;
-    transform: translateY({nudge_px}px); /* tweak 0..3px if you want perfect baseline lock */
+    transform: translateY({nudge_px}px); /* micro-adjust the bottom baseline if needed */
   }}
-  /* Mobile: scale icon & height down, and the text tracks it automatically */
+  /* Mobile tweaks */
   @media (max-width: 680px) {{
     .lc-logo {{ height: {icon_height_mobile}px; }}
     .lc-text {{ height: {icon_height_mobile}px; }}
@@ -74,7 +73,7 @@ def render_brand_hero_aligned(
 </style>
 
 <div class="lc-hero">
-  <img class="lc-logo" src="{icon_png}" alt="Lamfalussy Code logo"/>
+  <img class="lc-logo" src="{icon_src}" alt="Lamfalussy Code logo" />
   <div class="lc-text">
     <h1 class="lc-title">{title}</h1>
     <p class="lc-sub">{subhead}</p>
@@ -84,7 +83,6 @@ def render_brand_hero_aligned(
 """,
         unsafe_allow_html=True
     )
-
 
 def render_brand_bar(
     icon_path: str = "assets/lamfalussy_L_64.png",
