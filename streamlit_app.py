@@ -101,8 +101,8 @@ def render_brand_bar_aligned(
     bar_height_desktop: int = 44,
     bar_height_mobile: int = 38,
     logo_top_nudge_px: int = 0,
-    title_nudge_px: int = 15,
-    sub_nudge_px: int = -15
+    title_nudge_px: int = 22,
+    sub_nudge_px: int = -22
 ) -> None:
     # embed image as data-URI
     try:
