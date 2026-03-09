@@ -662,8 +662,8 @@ render_brand_bar_aligned(
     bar_height_desktop=44,                         # matches smaller look
     bar_height_mobile=38,
     logo_top_nudge_px=0,                           # micro‑tune if needed
-    title_nudge_px=15,
-    sub_nudge_px=-15
+    title_nudge_px=25,
+    sub_nudge_px=-25
 )
 
 # --- Build retrievers once ---
