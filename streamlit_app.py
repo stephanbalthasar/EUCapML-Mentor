@@ -355,11 +355,20 @@ if not st.session_state.authenticated:
     # --- Simple, robust login form ---
     # Requirements: show password + checkbox at the same time; allow Enter OR button click.
     with st.form(key="login_form", clear_on_submit=False):
-        pin = st.text_input("Enter password", type="password")
-        agree = st.checkbox(
-            "Confirm AI & Privacy Notice (link in footer)."
-        )
-        submitted = st.form_submit_button("Continue", type="primary")
+    pin = st.text_input("Enter password", type="password")
+    agree = st.checkbox(
+        "I have read the AI & Privacy Notice and will not include personal data in my submissions. "
+        "(See the link below.)"
+    )
+
+    submitted = st.form_submit_button("Continue", type="primary")
+
+    # --- Inline footer, rendered inside the form on the landing page ---
+    st.caption(
+        "[AI & Privacy Notice](?show_privacy=1) · "
+        "© 2026 Stephan Balthasar · This app uses AI & LLMs; outputs may be inaccurate; no liability. "
+        "Feedback is not a grade predictor."
+    )
 
     if submitted:
         role_detected = None
@@ -368,7 +377,6 @@ if not st.session_state.authenticated:
         elif pin and TUTOR_PIN and pin == TUTOR_PIN:
             role_detected = "tutor"
 
-        # Collect validation messages per spec
         messages = []
         if role_detected is None:
             messages.append("Incorrect password")
@@ -379,11 +387,9 @@ if not st.session_state.authenticated:
             for m in messages:
                 st.error(m)
         else:
-            # Successful login
             st.session_state.authenticated = True
             st.session_state.role = role_detected
             if role_detected == "student":
-                # log student login
                 update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "LOGIN", "student"])
             st.rerun()
     st.stop()
