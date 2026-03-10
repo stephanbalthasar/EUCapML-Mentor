@@ -1,6 +1,6 @@
-# Balthasar's Code - Your European Capital Markets Law AI Mentor
+# B's Bot. Your AI  Mentor for EU  Capital Markets Law.
 An app for students in the Bayreuth University EU Capital Markets Law course
-Balthasar's Code is a modular, privacy‑respecting digital tutor for European and German capital markets law.  
+B's Bot (the App) is a modular, privacy‑respecting AI tutor for European and German capital markets law.  
 It provides two distinct learning modes:
 
 1. **Exam‑style self‑testing** using sample cases and AI‑generated feedback  
@@ -13,7 +13,7 @@ This repository contains a complete redesign of a previous version, based on mod
 
 ## 🧭 Architecture Overview
 
-EUCapML Mentor is built from three conceptual layers:
+The App is built from three conceptual layers:
 
 ### **1. Engines (top‑level orchestration)**
 These implement the high‑level behaviours:
@@ -230,3 +230,7 @@ TBD.
 
 ### **👤 Author**
 Stephan Balthasar (Allianz SE)
+
+### **Release Date**
+10/03/2026
+
