@@ -17,7 +17,7 @@ from typing import Callable, List, Dict, Any
 def render_brand_bar_aligned(
     icon_src: str = "assets/b2_logo_1024.png",
     title: str = "B's Bot",
-    subhead: str = "Your AI Mentor for European Capital Markets Law.",
+    subhead: str = "Your AI Mentor for EU Capital Markets Law.",
     bar_height_desktop: int = 44,
     bar_height_mobile: int = 38,
     logo_top_nudge_px: int = 0,
@@ -344,7 +344,7 @@ if not st.session_state.authenticated:
     render_brand_bar_aligned(
         icon_src="assets/b2_logo_1024.png",
         title="B's Bot",
-        subhead="Your AI Mentor for European Capital Markets Law.",
+        subhead="Your AI Mentor for EU Capital Markets Law.",
         bar_height_desktop=44, bar_height_mobile=38,
         logo_top_nudge_px=0, title_nudge_px=3, sub_nudge_px=-3
     )
@@ -398,7 +398,7 @@ if not st.session_state.authenticated:
 render_brand_bar_aligned(
     icon_src="assets/b2_logo_1024.png",
     title="B's Bot",
-    subhead="Your AI Mentor for European Capital Markets Law.",
+    subhead="Your AI Mentor for EU Capital Markets Law.",
     bar_height_desktop=44, bar_height_mobile=38,
     logo_top_nudge_px=0, title_nudge_px=3, sub_nudge_px=-3
 )
