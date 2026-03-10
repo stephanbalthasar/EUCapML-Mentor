@@ -692,3 +692,5 @@ with tab_chat:
         on_ask=on_ask_tutor,
         clear_label="🗑️ Clear chat",
     )
+# --- Page footer (authenticated pages only) ---
+render_footer()
