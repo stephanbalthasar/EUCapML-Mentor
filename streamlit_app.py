@@ -15,7 +15,7 @@ from typing import Callable, List, Dict, Any
 # === HELPERS ===
 # === APP BAR ===
 def render_brand_bar_aligned(
-    icon_src: str = "assets/B2_logo.png",
+    icon_src: str = "assets/b2_logo_1024.png",
     title: str = "B's Bot",
     subhead: str = "Your AI Mentor for European Capital Markets Law.",
     bar_height_desktop: int = 44,
@@ -379,7 +379,7 @@ from mentor.llm.groq import GroqClient
 
 st.set_page_config(
     page_title="B's Bot",
-    page_icon="assets/B2_logo.png",
+    page_icon="assets/b2_logo_1024.png",
     layout="wide",
     initial_sidebar_state="collapsed"  # NEW: collapse sidebar by default
 )
@@ -428,7 +428,7 @@ if not st.session_state.authenticated:
     
     # Landing
     render_brand_bar_aligned(
-        icon_src="assets/B2_logo.png",
+        icon_src="assets/b2_logo_1024.png",
         title="B's Bot",
         subhead="Your AI Mentor for European Capital Markets Law.",
         bar_height_desktop=44, bar_height_mobile=38,
@@ -478,7 +478,7 @@ if not st.session_state.authenticated:
 
 # Compact brand bar (authenticated pages only)
 render_brand_bar_aligned(
-    icon_src="assets/B2_logo.png",
+    icon_src="assets/b2_logo_1024.png",
     title="B's Bot",
     subhead="Your AI Mentor for European Capital Markets Law.",
     bar_height_desktop=44, bar_height_mobile=38,
