@@ -145,3 +145,24 @@ def build_tutor_messages(
         {"role": "system", "content": SYSTEM_TUTOR},
         {"role": "user", "content": user_content},
     ]
+
+# mentor/prompts.py  (extend your existing follow-up builder)
+
+def build_followup_messages(previous_feedback: str,
+                            followup_question: str,
+                            max_words: int = FOLLOWUP_MAX_WORDS,
+                            booklet_chunks: list[str] | None = None) -> list[dict]:
+    system = (
+        "You answer follow‑up questions about previous feedback. Be precise, "
+        f"≤ {max_words} words. If something depends on facts, say what you would check. "
+        "Use the provided booklet excerpts if relevant; do not fabricate citations."
+    )
+    booklet_block = "\n\n".join(f"- {c}" for c in (booklet_chunks or [])[:12]) or "None"
+    user = (
+        f"PREVIOUS FEEDBACK:\n\"\"\"{(previous_feedback or '').strip()}\"\"\"\n\n"
+        f"FOLLOW-UP QUESTION:\n{(followup_question or '').strip()}\n\n"
+        f"RELEVANT BOOKLET EXCERPTS:\n{booklet_block}\n\n"
+        "Answer clearly. If the student asks for the model answer, politely refuse and re‑explain the principle."
+    )
+    return [{"role":"system","content":system},
+            {"role":"user","content":user}]
