@@ -357,8 +357,7 @@ if not st.session_state.authenticated:
     with st.form(key="login_form", clear_on_submit=False):
         pin = st.text_input("Enter password", type="password")
         agree = st.checkbox(
-            "I have read the AI & Privacy Notice and will not include personal data in my submissions. "
-            "(See the link below.)"
+            "I have read the AI & Privacy Notice (see link below) and will not include personal data in my submissions. "
         )
     
         submitted = st.form_submit_button("Continue", type="primary")
