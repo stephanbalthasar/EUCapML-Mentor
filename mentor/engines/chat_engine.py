@@ -16,10 +16,104 @@ class ChatEngine:
         self.web_retriever = web_retriever  # may be None for now
 
     def answer(self, user_query, *, model, temperature, max_tokens=800):
-        # 1) Simple keyword extraction (kept)
+        """
+        Generates an answer and then selects 0..5 booklet paragraphs that are
+        meaningfully related to the *answer* (not the question).
+        Only appends a footer if at least one paragraph clears a minimum similarity.
+        """
+        import string, math
+        import numpy as np
+
+        # ---------- local helpers (self-contained) ----------
+        def _tok_keep_acronyms(text: str) -> set[str]:
+            """Mirrors your acronym-aware tokenizer: keeps acronyms (>=2 uppers, len 2..8)
+            and normal words (>3 chars)."""
+            if not text:
+                return set()
+            punct_table = str.maketrans("", "", string.punctuation)
+            toks = text.translate(punct_table).split()
+            out = set()
+            for tok in toks:
+                upper_count = sum(1 for ch in tok if ch.isupper())
+                if 2 <= len(tok) <= 8 and upper_count >= 2:
+                    out.add(tok.lower())
+                    continue
+                tl = tok.lower()
+                if len(tl) > 3:
+                    out.add(tl)
+            return out
+
+        def _score_hits_against_answer(answer_text: str, hits: list[dict]) -> list[tuple[float, dict]]:
+            """
+            Returns list of (score, hit_dict), sorted by score desc.
+            Prefers embeddings if available; otherwise lexical cosine on acronym-aware tokens.
+            """
+            if not answer_text or not hits:
+                return []
+
+            # 1) Embedding cosine if an embedder is available on the booklet retriever
+            embedder = getattr(self.booklet_retriever, "embedder", None)
+            if embedder is not None:
+                try:
+                    p_texts = [h.get("text", "") for h in hits]
+                    P = embedder.encode(p_texts)  # keep provider-agnostic
+                    P = P / (np.linalg.norm(P, axis=1, keepdims=True) + 1e-12)
+                    a = embedder.encode([answer_text])[0]
+                    a = a / (np.linalg.norm(a) + 1e-12)
+                    sims = P @ a
+                    scored = [(float(sims[i]), {**hits[i], "_sim_mode": "embed"}) for i in range(len(hits))]
+                    scored.sort(key=lambda x: x[0], reverse=True)
+                    return scored
+                except Exception:
+                    pass  # fall through to lexical if anything goes wrong
+
+            # 2) Lexical fallback with acronym-aware tokens (binary-cosine)
+            aw = _tok_keep_acronyms(answer_text)
+            scored = []
+            for h in hits:
+                hw = _tok_keep_acronyms(h.get("text", ""))
+                overlap = len(aw & hw)
+                denom = math.sqrt(max(len(aw), 1) * max(len(hw), 1))
+                score = overlap / denom if denom else 0.0
+                scored.append((score, {**h, "_sim_mode": "lex"}))
+            scored.sort(key=lambda x: x[0], reverse=True)
+            return scored
+
+        def _select_supporting_paras(answer_text: str, hits: list[dict], max_n: int = 5) -> list[str]:
+            """
+            Returns 0..5 paragraph numbers with meaningful similarity.
+            Uses mode-specific minimum thresholds:
+              - embed >= 0.20
+              - lexical >= 0.10
+            """
+            ranked = _score_hits_against_answer(answer_text, hits)
+            if not ranked:
+                return []
+
+            selected = []
+            seen = set()
+            for score, h in ranked:
+                mode = h.get("_sim_mode", "lex")
+                threshold = 0.20 if mode == "embed" else 0.10
+                if score < threshold:
+                    continue  # not meaningful enough
+
+                pnum = h.get("para_num")
+                if pnum is None or pnum in seen:
+                    continue
+
+                seen.add(pnum)
+                selected.append(str(pnum))
+                if len(selected) == max_n:
+                    break
+
+            return selected
+        # ----------------------------------------------------
+
+        # 1) Simple keyword extraction (existing logic)
         keywords = self._extract_keywords(user_query)
 
-        # 2) Retrieve booklet context — prefer ParagraphRetriever (top 15)
+        # 2) Retrieve booklet context (prefer ParagraphRetriever)
         hits = []
         try:
             if hasattr(self.booklet_retriever, "retrieve"):
@@ -28,7 +122,7 @@ class ChatEngine:
                 # Back-compat: ChapterRetriever branch
                 chapter = self.booklet_retriever.retrieve_best(user_query)
                 if chapter and isinstance(chapter, dict):
-                    from mentor.rag.booklet_retriever import ParagraphRetriever
+                    from mentor.rag.booklet_retriever import ParagraphRetriever  # your current path
                     chapter_num = chapter.get("chapter_num")
                     chapter_paras = [
                         p for p in (self.booklet_index.get("paragraphs") or [])
@@ -56,17 +150,7 @@ class ChatEngine:
             for h in hits if h
         ]
 
-        # --- NEW: collect paragraph numbers used -------------------------
-        para_nums = []
-        for h in hits:
-            if isinstance(h, dict) and "para_num" in h and h["para_num"] is not None:
-                para_nums.append(str(h["para_num"]))
-        # keep order, remove duplicates
-        seen = set()
-        para_nums = [p for p in para_nums if not (p in seen or seen.add(p))]
-        # ------------------------------------------------------------------
-
-        # 3) Optional web retrieval (kept)
+        # 3) Optional web retrieval (off unless web_retriever is set)
         web_snippets = []
         if self.web_retriever is not None:
             try:
@@ -93,17 +177,19 @@ class ChatEngine:
             max_tokens=max_tokens
         )
 
-        # --- NEW: append a deterministic footer with paragraph numbers ----
-        # Ensure we have a string to display in Streamlit
+        # Coerce to plain string for display
         reply_text = result if isinstance(result, str) else str(result)
-        if para_nums:
-            # Limit to the 15 used; adjust formatting as you prefer
-            footer = "\n\n---\n" \
-                     "_Also see paragraphs " + ", ".join(para_nums[:15]) + " in the course booklet._"
+
+        # 6) Pick 0..5 supporting paragraph numbers based on the *answer*
+        selected_para_nums = _select_supporting_paras(reply_text, hits, max_n=5)
+
+        # Append footer only if we actually have meaningful support
+        if selected_para_nums:
+            footer = "\n\n---\n" + "_Key paragraphs: " + ", ".join(selected_para_nums) + "._"
             reply_text += footer
 
         return reply_text
-        # ------------------------------------------------------------------
+
 
     # -------- helpers (kept) --------------------
     def _extract_keywords(self, text):
