@@ -655,34 +655,15 @@ with tab_chat:
 
         # Build a compact preamble from prior turns; keep retrieval focused on CURRENT question
         preamble = _build_history_preamble(history, max_tokens=6000)
-        composed_q = (
-            "You are in an ongoing conversation. Use the 'Conversation so far' only for context; "
-            "when searching the booklet, focus on the CURRENT question. "
-            "If you cite legal norms, prefer short forms (e.g., 'MAR Art. 17'). "
-            "Avoid fabricating case law.\n\n"
-            f"Conversation so far (most recent last):\n{preamble}\n\n"
-            f"CURRENT question:\n{user_q}"
-        ).strip()
 
-        try:
-            # Slightly lower max_tokens to ease rate pressure (optional)
-            return chat_engine.answer(
-                composed_q,
-                model=model,
-                temperature=temp,
-                max_tokens=700,  # was 800; small reduction to ease 429s
-            )
-        except Exception as e:
-            # Show a friendly, actionable message in the transcript
-            msg = str(e)
-            if "rate" in msg.lower() or "429" in msg:
-                return (
-                    "⏳ We’re hitting the provider’s rate limit right now. "
-                    "Please wait ~10–20 seconds and ask again."
-                )
-            # Fallback general message
-            return "Sorry—there was a temporary issue. Please try again in a few seconds."
-
+        return chat_engine.answer(
+            user_q,                       # raw user text
+            model=model,
+            temperature=temp,
+            max_tokens=700,
+            conversation_preamble=preamble,  # context goes here
+        )
+        
     # 👉 This call actually renders the chat UI inside the tab
     render_conversation(
         state_key="tutor_chat",
