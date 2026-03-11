@@ -5,10 +5,13 @@ from mentor.prompts import (
     build_plan_messages,
     build_followup_messages,
 )
+from mentor.rag.booklet_references_selector import rank_paragraphs_by_text, pick_para_nums
+
 
 class FeedbackEngine:
-    def __init__(self, llm):
+    def __init__(self, llm, booklet_retriever=None):
         self.llm = llm
+        self.booklet_retriever = booklet_retriever
 
     # -------------------------------------------------------
     # (i) PLAN  ---- CHANGED SIGNATURE ----
@@ -32,7 +35,8 @@ class FeedbackEngine:
     # -------------------------------------------------------
     # (ii) Evaluate a submitted answer  — use the prompt builder
     # -------------------------------------------------------
-    def evaluate_answer(self, *, student_answer, model_answer, model, temperature, max_words=300):
+    # mentor/engines/feedback_engine.py (snippets)
+    def evaluate_answer(self, *, student_answer: str, model_answer: str, model: str, temperature: float):
         # Build the structured, five‑heading prompt with a word ceiling
         messages = build_evaluate_messages(
             student_answer=student_answer,
@@ -48,7 +52,19 @@ class FeedbackEngine:
             max_tokens=900  # generous but bounded; headings + content fit comfortably
         )
         return raw if isinstance(raw, str) else str(raw)
+        if self.booklet_retriever is not None:
+            try:
+                # retrieve 15 candidates against student's answer (broad)
+                hits = self.booklet_retriever.retrieve(student_answer or "", top_k=15) or []
+                ranked = rank_paragraphs_by_text(feedback_text, hits, booklet_retriever=self.booklet_retriever)
+                picked = pick_para_nums(ranked, max_n=5)
+                if picked:
+                    feedback_text = feedback_text.rstrip() + "\n\n---\n" + "_Key paragraphs: " + ", ".join(picked) + "._"
+            except Exception:
+                pass
 
+        return feedback_text
+   
     # -------------------------------------------------------
     # (iii) Follow-up questions about the feedback
     # -------------------------------------------------------
