@@ -68,28 +68,41 @@ class FeedbackEngine:
     # -------------------------------------------------------
     # (iii) Follow-up questions about the feedback
     # -------------------------------------------------------
-    
-    def follow_up_with_history(self, question, context, model, temperature):
-        messages = []
-    
-        # Inject core context
-        messages.append({"role": "system", "content": f"Student exam answer:\n{context['student_answer']}"})
-        messages.append({"role": "system", "content": f"Feedback:\n{context['feedback']}"})
-    
-        # Prior chat turns
-        for role, msg in context["history"]:
-            messages.append({
-                "role": "user" if role == "student" else "assistant",
-                "content": msg
-            })
-    
-        # Current question
-        messages.append({"role": "user", "content": question})
-    
-        # LLM call
-        return self.llm.chat(
-            messages=messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=800
-        )
+    # mentor/engines/feedback_engine.py (snippets)
+from mentor.prompts import build_followup_messages
+from mentor.rag.booklet_references_selector import compact_chunks, rank_paragraphs_by_text, pick_para_nums
+
+def follow_up_with_history(self, *, question: str, context: dict, model: str, temperature: float):
+    prev_fb = (context or {}).get("feedback","")
+    # 1) Retrieve 12–15 booklet paragraphs (anchor on the follow-up question)
+    hits = []
+    if self.booklet_retriever is not None:
+        try:
+            hits = self.booklet_retriever.retrieve(question or "", top_k=15) or []
+        except Exception:
+            hits = []
+
+    # 2) Build prompt WITH booklet chunks
+    booklet_chunks = compact_chunks(hits, max_chars=700, max_k=12)
+    messages = build_followup_messages(
+        previous_feedback=prev_fb,
+        followup_question=question,
+        booklet_chunks=booklet_chunks,
+        max_words=FOLLOWUP_MAX_WORDS,
+    )
+
+    # 3) Ask LLM
+    raw = self.llm.chat(messages=messages, model=model, temperature=temperature, max_tokens=500)
+    reply_text = raw if isinstance(raw, str) else str(raw)
+
+    # 4) Append supporting paras (answer-aware, same selector as ChatEngine)
+    if hits and self.booklet_retriever is not None:
+        try:
+            ranked = rank_paragraphs_by_text(reply_text, hits, booklet_retriever=self.booklet_retriever)
+            picked = pick_para_nums(ranked, max_n=5)
+            if picked:
+                reply_text += "\n\n---\n" + "_Key paragraphs: " + ", ".join(picked) + "._"
+        except Exception:
+            pass
+
+    return reply_text
