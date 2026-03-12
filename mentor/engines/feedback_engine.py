@@ -15,7 +15,14 @@ from mentor.rag.supporting_sources_selector import select_supporting_paragraphs
 class FeedbackEngine:
     def __init__(self, llm, booklet_retriever=None):
         self.llm = llm
-        self.booklet_retriever = booklet_retriever  # ParagraphRetriever or None
+        self.booklet_retriever = booklet_retriever
+        if self.booklet_retriever is None:
+            try:
+                import streamlit as st
+                st.sidebar.warning(
+                    "[FE] No booklet retriever attached – prompt grounding and source selection are disabled."
+                )
+            except Exception:
 
     # -------------------------------------------------------
     # (i) PLAN  ---- CHANGED SIGNATURE ----
