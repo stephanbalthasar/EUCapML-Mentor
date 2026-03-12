@@ -415,12 +415,9 @@ if not llm_api_key:
 llm = GroqClient(api_key=llm_api_key)
 
 # --- Engines ---
-
-booklet_index = { "paragraphs": [...] }   # your parsed booklet JSON
-booklet_retriever = ParagraphRetriever(booklet_index["paragraphs"])
+booklet_index = INDEX
 web_retriever = CuriaEurlexRetriever(lang="EN")  # or "DE"/"FR"
-
-engine = ChatEngine(
+chat_engine = ChatEngine(
     llm=llm,
     booklet_index=booklet_index,
     booklet_retriever=para_retriever,
