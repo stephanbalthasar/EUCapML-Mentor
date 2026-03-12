@@ -291,7 +291,7 @@ from mentor.rag.booklet_retriever import ParagraphRetriever, ChapterRetriever
 from mentor.engines.chat_engine import ChatEngine
 from mentor.engines.feedback_engine import FeedbackEngine
 from mentor.llm.groq import GroqClient
-from web_curia_eurlex import CuriaEurlexRetriever
+from mentor.rag.web_curia_eurlex import CuriaEurlexRetriever
 
 st.set_page_config(
     page_title="B's Bot",
