@@ -7,6 +7,8 @@ from mentor.prompts import (
     build_followup_messages,
 )
 
+from mentor.rag.booklet_retriever import fetch_booklet_chunks_for_prompt
+
 class FeedbackEngine:
     def __init__(self, llm, booklet_retriever=None):
         self.llm = llm
@@ -54,9 +56,15 @@ class FeedbackEngine:
     # -------------------------------------------------------
     # (iii) Follow-up questions about the feedback
     # -------------------------------------------------------
+
+
+
     
     def follow_up_with_history(self, question, context, model, temperature):
-        messages = []
+        messages =        )    messages = []
+            if booklet_chunks:
+                block = "Relevant booklet excerpts:\n" + "\n\n".join(f"- {c}" for c in booklet_chunks)
+                messages.append({"role": "system", "content": block})
     
         # Inject core context
         messages.append({"role": "system", "content": f"Student exam answer:\n{context['student_answer']}"})
@@ -71,6 +79,17 @@ class FeedbackEngine:
     
         # Current question
         messages.append({"role": "user", "content": question})
+
+        booklet_chunks: list[str] = []
+        if getattr(self, "booklet_retriever", None) is not None:
+            _, booklet_chunks = fetch_booklet_chunks_for_prompt(
+                self.booklet_retriever,
+                question or "",
+                top_k=15,
+                # optional: enable truncation if your paragraphs are very long
+                # truncate_chars=700,
+            )
+
     
         # LLM call
         return self.llm.chat(
@@ -79,3 +98,5 @@ class FeedbackEngine:
             temperature=temperature,
             max_tokens=800
         )
+
+        
