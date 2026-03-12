@@ -140,7 +140,7 @@ class FeedbackEngine:
         # 6) Gate: should we attach sources for THIS answer? (deterministic, temp=0)
         try:
             gate_msgs = build_sources_gate_messages(user_query=question, answer_text=reply_text)
-            gate_raw = self.llm.chat(gate_msgs, model=model, temperature=0.0, max_tokens=4)
+            gate_raw = self.llm.chat(messages=gate_msgs, model=model, temperature=0.0, max_tokens=4)
             gate_txt = gate_raw if isinstance(gate_raw, str) else str(gate_raw)
             show_sources = gate_txt.strip().upper().startswith("YES")
         except Exception:
