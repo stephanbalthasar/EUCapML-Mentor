@@ -101,9 +101,6 @@ class ChapterRetriever:
         best_idx = int(np.argmax(sims))
         return self.chapters[best_idx]
 
-
-
-# mentor/rag/supporting_sources_selector.py
 def fetch_booklet_chunks_for_prompt(
     retriever,
     query: str,
