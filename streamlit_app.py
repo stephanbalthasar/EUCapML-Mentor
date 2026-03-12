@@ -463,6 +463,11 @@ with st.sidebar:
         st.write(f"sources_selected: {dbg.get('sources_selected')}")
         if dbg.get("picked"):
             st.write(f"picked: {', '.join(dbg['picked'])}")
+    dbg = st.session_state.get("__web_snippets_debug__")
+    if dbg:
+        with st.sidebar:
+            st.caption("🌐 Web retriever debug")
+            st.write(dbg)
 
 # --- Tabs: Feedback + Tutor chat ---
 tab_feedback, tab_chat = st.tabs(["📝 Sample Exam Cases", "💬 General Chat"])
