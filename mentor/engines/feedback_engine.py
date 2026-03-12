@@ -68,7 +68,7 @@ class FeedbackEngine:
     # (iii) Follow-up questions about the feedback
     # -------------------------------------------------------
 
-    def follow_up_with_history(self, question, context, model, temperature):
+    def follow_up_with_history(self, question, context, model, temperature, *, force_sources: bool = False):
         """
         Follow-up chat (exam module):
         - Ground the prompt with booklet snippets (from question + prior feedback).
@@ -77,25 +77,17 @@ class FeedbackEngine:
         - If YES: run answer-driven selector (retrieves with answer text).
           If none picked: fallback once using (question + feedback) candidates and re-score.
         - Append footer if we have picks.
-        - Emit sidebar diagnostics.
+        - Persist diagnostics so they survive Streamlit's post-reply st.rerun().
         - Return a plain string.
         """
-        # --- Diagnostics: prove which file/class is running ---
-        try:
-            import streamlit as st, inspect, time
-            st.sidebar.info(f"[FE] live: {time.time():.0f}")
-            st.sidebar.write(f"[FE] module: {FeedbackEngine.__module__}")
-            st.sidebar.write(f"[FE] file: {inspect.getsourcefile(FeedbackEngine)}")
-        except Exception:
-            pass
     
         # 0) Base messages
         messages = []
         messages.append({"role": "system", "content": f"Student exam answer:\n{context['student_answer']}"})
         messages.append({"role": "system", "content": f"Feedback:\n{context['feedback']}"})
     
-        # 1) Prompt grounding: question + prior feedback
-        booklet_chunks: list[str] = []
+        # 1) Prompt grounding: booklet snippets from (question + prior feedback)
+        booklet_chunks = []
         if getattr(self, "booklet_retriever", None) is not None:
             try:
                 _hits_q, chunks_q = fetch_booklet_chunks_for_prompt(
@@ -115,11 +107,6 @@ class FeedbackEngine:
                 booklet_chunks = merged
             except Exception:
                 booklet_chunks = []
-        try:
-            import streamlit as st
-            st.sidebar.write(f"[FE] booklet_chunks_in_prompt: {len(booklet_chunks)}")
-        except Exception:
-            pass
     
         if booklet_chunks:
             block = "Relevant booklet excerpts:\n" + "\n\n".join(f"- {c}" for c in booklet_chunks)
@@ -139,35 +126,40 @@ class FeedbackEngine:
         raw = self.llm.chat(messages=messages, model=model, temperature=temperature, max_tokens=800)
         reply_text = raw if isinstance(raw, str) else str(raw)
     
-        # 6) Gate (deterministic)
+        # 6) Gate (deterministic; use messages=... to avoid signature issues)
         try:
             gate_msgs = build_sources_gate_messages(user_query=question, answer_text=reply_text)
             gate_raw = self.llm.chat(messages=gate_msgs, model=model, temperature=0.0, max_tokens=4)
             gate_txt = gate_raw if isinstance(gate_raw, str) else str(gate_raw)
             show_sources = gate_txt.strip().upper().startswith("YES")
         except Exception:
-            gate_txt, show_sources = "EXC", False
+            gate_txt, show_sources = "EXC", False  # conservative + defined for debug
     
-        # 7) Select supporting paragraphs (answer-driven), with fallback
-        picked: list[str] = []
+        # Optional developer override
+        if force_sources:
+            show_sources = True
+    
+        # 7) Select supporting paragraphs (answer-driven), then fallback once
+        picked = []
         if show_sources and getattr(self, "booklet_retriever", None) is not None:
             try:
                 picked = select_supporting_paragraphs(
                     answer_text=reply_text,
-                    hits=None,
+                    hits=None,  # selector retrieves with answer_text as query
                     booklet_retriever=self.booklet_retriever,
                     top_k=15,
                     max_n=5,
                 )
             except Exception:
                 picked = []
+    
             if not picked:
                 try:
                     qf = f"{question or ''}\n{context.get('feedback') or ''}".strip()
                     cand_hits, _ = fetch_booklet_chunks_for_prompt(self.booklet_retriever, qf, top_k=15)
                     picked = select_supporting_paragraphs(
                         answer_text=reply_text,
-                        hits=cand_hits,
+                        hits=cand_hits,  # re-score these against the final answer
                         booklet_retriever=self.booklet_retriever,
                         max_n=5,
                     )
@@ -177,12 +169,17 @@ class FeedbackEngine:
         if picked:
             reply_text += "\n\n---\n" + "_Key paragraphs: " + ", ".join(picked) + "._"
     
-        # 8) Sidebar debug
+        # 8) Persist diagnostics so they survive post-reply st.rerun()
         try:
-            import streamlit as st
-            st.sidebar.write(f"[FE] gate_raw: {gate_txt!r}")
-            st.sidebar.write(f"[FE] gate_parsed: {'YES' if show_sources else 'NO'}")
-            st.sidebar.write(f"[FE] sources_selected: {len(picked)}")
+            import streamlit as st, time
+            st.session_state["fe_debug"] = {
+                "ts": time.time(),
+                "booklet_chunks_in_prompt": len(booklet_chunks),
+                "gate_raw": gate_txt,
+                "gate_parsed": "YES" if show_sources else "NO",
+                "sources_selected": len(picked),
+                "picked": picked,
+            }
         except Exception:
             pass
     
