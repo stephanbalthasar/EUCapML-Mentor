@@ -291,6 +291,7 @@ from mentor.rag.booklet_retriever import ParagraphRetriever, ChapterRetriever
 from mentor.engines.chat_engine import ChatEngine
 from mentor.engines.feedback_engine import FeedbackEngine
 from mentor.llm.groq import GroqClient
+from web_curia_eurlex import CuriaEurlexRetriever
 
 st.set_page_config(
     page_title="B's Bot",
@@ -414,12 +415,18 @@ if not llm_api_key:
 llm = GroqClient(api_key=llm_api_key)
 
 # --- Engines ---
-chat_engine = ChatEngine(
-    llm=llm,
-    booklet_index=INDEX,
-    booklet_retriever=para_retriever,  
-    web_retriever=None                 
+
+booklet_index = { "paragraphs": [...] }   # your parsed booklet JSON
+booklet_retriever = ParagraphRetriever(booklet_index["paragraphs"])
+web_retriever = CuriaEurlexRetriever(lang="EN")  # or "DE"/"FR"
+
+engine = ChatEngine(
+    llm=my_llm,
+    booklet_index=booklet_index,
+    booklet_retriever=para_retriever,
+    web_retriever=web_retriever,
 )
+
 feedback_engine = FeedbackEngine(llm=llm, booklet_retriever=para_retriever)
 
 # --- Sidebar controls ---
