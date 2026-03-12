@@ -18,24 +18,24 @@ class ChatEngine:
         self.web_retriever = web_retriever  # may be None for now
 
     def _should_show_sources(self, user_query: str, reply_text: str, *, model: str) -> bool:
-    """
-    Asks the LLM (temperature=0) whether the answer merits booklet references.
-    Returns True only on a clean 'YES'. Any other output falls back to heuristic False.
-    """
-    messages = build_sources_gate_messages(user_query=user_query, answer_text=reply_text)
-    try:
-        res = self.llm.chat(messages=messages, model=model, temperature=0.0, max_tokens=4)
-        text = res if isinstance(res, str) else str(res)
-        out = text.strip().upper()
-        # accept minimal variants; keep this small to stay deterministic
-        if out.startswith("YES"):
-            return True
-        if out.startswith("NO"):
-            return False
-    except Exception:
-        pass
-    # Fallback: conservative (no sources) if the gate fails
-    return False
+        """
+        Asks the LLM (temperature=0) whether the answer merits booklet references.
+        Returns True only on a clean 'YES'. Any other output falls back to heuristic False.
+        """
+        messages = build_sources_gate_messages(user_query=user_query, answer_text=reply_text)
+        try:
+            res = self.llm.chat(messages=messages, model=model, temperature=0.0, max_tokens=4)
+            text = res if isinstance(res, str) else str(res)
+            out = text.strip().upper()
+            # accept minimal variants; keep this small to stay deterministic
+            if out.startswith("YES"):
+                return True
+            if out.startswith("NO"):
+                return False
+        except Exception:
+            pass
+        # Fallback: conservative (no sources) if the gate fails
+        return False
 
     def answer(self, user_query, *, model, temperature, max_tokens=800, conversation_preamble=None):
         """
