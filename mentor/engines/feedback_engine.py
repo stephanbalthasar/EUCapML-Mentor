@@ -8,6 +8,8 @@ from mentor.prompts import (
 )
 
 from mentor.rag.booklet_retriever import fetch_booklet_chunks_for_prompt
+from mentor.prompts import build_sources_gate_messages
+from mentor.rag.supporting_sources_selector import select_supporting_paragraphs
 
 class FeedbackEngine:
     def __init__(self, llm, booklet_retriever=None):
@@ -129,3 +131,29 @@ class FeedbackEngine:
             temperature=temperature,
             max_tokens=800,
         )
+
+        # 6) Add sources
+        try:
+            gate_msgs = build_sources_gate_messages(user_query=question, answer_text=reply_text)
+            gate_raw = self.llm.chat(gate_msgs, model=model, temperature=0.0, max_tokens=4)
+            gate_txt = gate_raw if isinstance(gate_raw, str) else str(gate_raw)
+            show_sources = gate_txt.strip().upper().startswith("YES")
+        except Exception:
+            show_sources = False  # conservative: don't show if the gate fails
+        
+        if show_sources and getattr(self, "booklet_retriever", None) is not None:
+            try:
+                # Answer‑driven selection: the selector retrieves top_k for the *answer_text*
+                picked = select_supporting_paragraphs(
+                    answer_text=reply_text,
+                    hits=None,  # None => selector retrieves with answer_text as query
+                    booklet_retriever=self.booklet_retriever,
+                    top_k=15,
+                    max_n=5,
+                )
+                if picked:
+                    reply_text += "\n\n---\n" + "_Key paragraphs: " + ", ".join(picked) + "._"
+            except Exception:
+                pass
+        
+        return reply_text
