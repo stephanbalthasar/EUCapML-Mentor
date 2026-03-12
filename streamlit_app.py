@@ -10,6 +10,15 @@ import requests
 import streamlit as st
 import time
 from typing import Callable, List, Dict, Any
+from app.bootstrap_booklet import load_booklet_index
+INDEX = load_booklet_index()  # {"paragraphs": [...], "chapters": [...]}
+from app.bootstrap_cases import load_cases
+CASES = load_cases()
+from mentor.rag.booklet_retriever import ParagraphRetriever, ChapterRetriever
+from mentor.engines.chat_engine import ChatEngine
+from mentor.engines.feedback_engine import FeedbackEngine
+from mentor.llm.groq import GroqClient
+from mentor.rag.web_curia_eurlex import CuriaEurlexRetriever
 # ───────────────────────────────────────────────────────────────────────────────
 
 # === HELPERS ===
@@ -279,19 +288,6 @@ def update_gist(new_entry):
     except Exception:
         # Best-effort logging — ignore network/api errors to keep UX smooth
         pass
-
-# --- Load booklet index (server-side; users never see this file) ---
-from app.bootstrap_booklet import load_booklet_index
-INDEX = load_booklet_index()  # {"paragraphs": [...], "chapters": [...]}
-
-from app.bootstrap_cases import load_cases
-CASES = load_cases()
-
-from mentor.rag.booklet_retriever import ParagraphRetriever, ChapterRetriever
-from mentor.engines.chat_engine import ChatEngine
-from mentor.engines.feedback_engine import FeedbackEngine
-from mentor.llm.groq import GroqClient
-from mentor.rag.web_curia_eurlex import CuriaEurlexRetriever
 
 st.set_page_config(
     page_title="B's Bot",
