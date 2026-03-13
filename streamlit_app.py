@@ -435,7 +435,7 @@ llm = GroqClient(api_key=llm_api_key)
 
 # --- Engines ---
 booklet_index = INDEX
-web_retriever = CuriaEurlexRetriever(lang="EN")  # or "DE"/"FR"
+web_retriever = CuriaEurlexRetriever(lang="EN", timeout_sec=6.0)
 chat_engine = ChatEngine(
     llm=llm,
     booklet_index=booklet_index,
