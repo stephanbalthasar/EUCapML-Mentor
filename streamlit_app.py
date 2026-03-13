@@ -19,6 +19,8 @@ from mentor.engines.chat_engine import ChatEngine
 from mentor.engines.feedback_engine import FeedbackEngine
 from mentor.llm.groq import GroqClient
 from mentor.rag.web_curia_eurlex import CuriaEurlexRetriever
+from mentor.rag.booklet_retriever import STEmbedder
+
 # ───────────────────────────────────────────────────────────────────────────────
 
 # === HELPERS ===
@@ -400,7 +402,11 @@ render_brand_bar_aligned(
 )
 
 # --- Build retrievers once ---
-para_retriever = ParagraphRetriever(INDEX["paragraphs"])
+embedder = STEmbedder(
+    model_name="paraphrase-multilingual-mpnet-base-v2",  # multilingual, 768-d
+    device="cpu"  # change to "cuda" if you run on a GPU host
+)
+para_retriever = ParagraphRetriever(INDEX["paragraphs"], embedder=embedder)
 chap_retriever = ChapterRetriever(INDEX["chapters"])
 
 # --- LLM client ---
