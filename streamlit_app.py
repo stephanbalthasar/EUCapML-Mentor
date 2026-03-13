@@ -473,8 +473,9 @@ with st.sidebar:
 
     if st.button("Reload booklet index (server cache)"):
         st.cache_data.clear()
+        st.cache_resource.clear()
         st.success("Re-loaded. Re-run the action to use the latest JSON.")
-
+    
     # --- FE diagnostics (persisted across reruns) ---
     dbg = st.session_state.get("fe_debug")
     if dbg:
