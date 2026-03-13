@@ -125,6 +125,24 @@ class ChatEngine:
             }
     
         # 4) Build messages for LLM
+        # Compute how many will actually go into the prompt (builder slices)
+        booklet_used = min(len(booklet_chunks or []), 15)  # tutor prompt uses [:15]
+        web_used     = min(len(web_snippets or []), 4)     # tutor prompt uses [:4]
+        # Console log (server)
+        print(f"[ChatEngine] Prompt sources -> booklet_chunks_used={booklet_used} "
+              f"(retrieved={len(booklet_chunks or [])}), "
+              f"web_snippets_used={web_used} (retrieved={len(web_snippets or [])})")
+        # Also expose in Streamlit's session state for sidebar display
+        try:
+            st.session_state["__prompt_source_counts__"] = {
+                "booklet_used": booklet_used,
+                "booklet_retrieved": len(booklet_chunks or []),
+                "web_used": web_used,
+                "web_retrieved": len(web_snippets or []),
+            }
+        except Exception:
+            pass
+
         
         messages = self._build_prompt(
             user_query=user_query,
