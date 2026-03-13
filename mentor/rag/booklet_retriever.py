@@ -9,6 +9,64 @@ from typing import List, Dict, Tuple, Optional
 import numpy as np
 import string
 
+
+import re  # NEW
+
+# --- Normalization helpers ----------------------------------------------------
+def _normalize_text_basic(s: str) -> str:
+    """Lowercase and normalize hyphens/dashes to spaces for simple phrase checks."""
+    return re.sub(r"[\u2010\u2011\u2012\u2013\u2014\-]+", " ", (s or "").lower())
+
+def _extract_query_units(q: str) -> tuple[set[str], list[str]]:
+    """
+    Return:
+      - Q_tokens: set of normalized unigrams (len >= 3)
+      - Q_phrases: list of normalized bigrams and trigrams (order preserved)
+    """
+    qn = _normalize_text_basic(q)
+    toks = [t for t in qn.split() if len(t) >= 3]
+    tokens = set(toks)
+    phrases: list[str] = []
+    for n in (2, 3):
+        for i in range(len(toks) - n + 1):
+            phrases.append(" ".join(toks[i : i + n]))
+    return tokens, phrases
+
+# --- Citation / docket pattern detectors -------------------------------------
+_DOCKET_RE = re.compile(r"\b[CTF]\s*[-–]?\s*\d{1,4}\s*/\s*\d{2}\b", re.I)
+_ART_NUM_RE = re.compile(r"(?:art(?:ikel)?|article)\s*\.?\s*(\d+[a-z]?)", re.I)
+_PARA_SIGN_RE = re.compile(r"§\s*(\d+[a-z]?)", re.I)
+
+def _extract_citation_patterns(q: str) -> list[re.Pattern]:
+    """Build concrete regexes only for patterns present in the query."""
+    patterns: list[re.Pattern] = []
+    if _DOCKET_RE.search(q or ""):
+        patterns.append(_DOCKET_RE)
+    for num in _ART_NUM_RE.findall(q or ""):
+        patterns.append(re.compile(rf"\b(?:art(?:ikel)?|article)\s*\.?\s*{re.escape(num)}\b", re.I))
+    for num in _PARA_SIGN_RE.findall(q or ""):
+        patterns.append(re.compile(rf"§\s*{re.escape(num)}\b", re.I))
+    return patterns
+
+# --- Exact‑match checks used by the Q<4 gate ----------------------------------
+def _contains_any_phrase(text: str, phrases: list[str]) -> bool:
+    if not phrases:
+        return False
+    t = _normalize_text_basic(text)
+    return any(ph and ph in t for ph in phrases)
+
+def _contains_all_tokens(text: str, tokens: set[str]) -> bool:
+    if not tokens:
+        return False
+    # Reuse your acronym‑aware tokenizer so MAR/WpHG/MiCA survive.
+    t_words = _tokenize_keep_acronyms((text or "").lower())
+    return tokens.issubset(t_words)
+
+def _matches_any_pattern(text: str, patterns: list[re.Pattern]) -> bool:
+    if not patterns:
+        return False
+    return any(p.search(text or "") for p in patterns)
+
 # --- Sentence-Transformers adapter (optional embedder) -----------------------
 # Enables embedding mode for ParagraphRetriever by wrapping any ST model.
 # Model examples:
@@ -174,7 +232,72 @@ class ParagraphRetriever:
         if not (query or "").strip():
             # Empty/whitespace query yields no meaningful retrieval
             return []
+        # ------------------------------
+        # A0) Query informativeness gate
+        # ------------------------------
+        Q_tokens, Q_phrases = _extract_query_units(query)
+        Q_long = {t for t in Q_tokens if len(t) >= 4}  # ignore tiny tokens in rule (2)
+        citation_patterns = _extract_citation_patterns(query)
 
+        if len(Q_tokens) < 4:
+            # Under-informative query: allow ONLY exact-match candidates (Rules 1–3)
+            cand_idxs: list[int] = []
+            for i, p in enumerate(self.paragraphs):
+                text = p.get("text", "")
+                rule1 = _contains_any_phrase(text, Q_phrases)                   # (1) phrase match
+                rule2 = (len(Q_long) > 0) and _contains_all_tokens(text, Q_long) # (2) all long tokens present
+                rule3 = (len(citation_patterns) > 0) and _matches_any_pattern(text, citation_patterns)  # (3) citation/docket
+                if rule1 or rule2 or rule3:
+                    cand_idxs.append(i)
+
+            if not cand_idxs:
+                return []  # nothing literal -> no booklet chunks
+
+            # Rank ONLY the candidate set (embed or lexical), then run the usual thresholds.
+            if mode == "embed":
+                # Build normalized query vector once
+                qv = self.embedder.encode([query], normalize_embeddings=True)[0]
+                qv = qv / (np.linalg.norm(qv) + 1e-12)
+                P = self._emb / (np.linalg.norm(self._emb, axis=1, keepdims=True) + 1e-12)
+                sims = np.dot(P[cand_idxs], qv)  # cosine similarities for candidates
+                order = np.argsort(sims)[::-1]
+                ranked = [(float(sims[j]), self.paragraphs[cand_idxs[j]]) for j in order]
+            else:
+                # Lexical score limited to candidates
+                scored: list[tuple[float, dict]] = []
+                for i in cand_idxs:
+                    p = self.paragraphs[i]
+                    p_words = _tokenize_keep_acronyms(p.get("text", ""))
+                    denom = max(1.0, (len(q_words) * len(p_words)) ** 0.5)
+                    score = len(q_words & p_words) / denom
+                    scored.append((score, p))
+                ranked = sorted(scored, key=lambda x: x[0], reverse=True)
+
+            # ---- apply your existing thresholds on the ranked list ----
+            scores = [s for s, _ in ranked] or [0.0]
+            top = float(scores[0])
+            med = float(np.median(scores))
+            if mode == "embed":
+                _min_abs = 0.28 if min_abs is None else float(min_abs)
+                _min_gap = 0.08 if min_gap is None else float(min_gap)
+                _floor   = 0.20 if floor   is None else float(floor)
+            else:
+                _min_abs = 0.14 if min_abs is None else float(min_abs)
+                _min_gap = 0.05 if min_gap is None else float(min_gap)
+                _floor   = 0.10 if floor   is None else float(floor)
+
+            if (top < _min_abs) or ((top - med) < _min_gap):
+                return []
+
+            filtered: list[dict] = []
+            for s, p in ranked:
+                if s < _floor:
+                    continue
+                filtered.append(p)
+                if len(filtered) == min(5, top_k):   # <= TOP-5 CAP FOR Q<4
+                    break
+            return filtered
+        
         # ------------------------------
         # A) Scoring (embed -> lexical)
         # ------------------------------
