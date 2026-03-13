@@ -8,9 +8,118 @@ from __future__ import annotations
 from typing import List, Dict, Tuple, Optional
 import numpy as np
 import string
-
-
 import re  # NEW
+
+
+# --- NEW: imports and helpers for Q-gate -------------------------------------
+import re
+
+def _normalize_text_basic(s: str) -> str:
+    """Lowercase and normalize hyphens/dashes to spaces for phrase checks."""
+    return re.sub(r"[\u2010\u2011\u2012\u2013\u2014\-]+", " ", (s or "").lower())
+
+def _words_basic(text: str) -> list[str]:
+    """Tokenize for phrase-building (whitespace split after hyphen/dash normalization)."""
+    return [w for w in _normalize_text_basic(text).split() if w]
+
+def _build_booklet_vocabs(paragraphs: list[dict]) -> tuple[set[str], set[str]]:
+    """
+    Build two lightweight vocabs once:
+      - token_vocab: normalized unigrams (len >= 3)
+      - phrase_vocab: normalized bigrams + trigrams (for fast 'phrase exists' checks)
+    """
+    token_vocab: set[str] = set()
+    phrase_vocab: set[str] = set()
+    for p in paragraphs:
+        t = p.get("text", "")
+        words = _words_basic(t)
+        # unigrams
+        token_vocab.update(w for w in words if len(w) >= 3)
+        # bigrams + trigrams
+        for n in (2, 3):
+            for i in range(len(words) - n + 1):
+                phrase_vocab.add(" ".join(words[i:i+n]))
+    return token_vocab, phrase_vocab
+
+# --- Query units used by the Q-gate ------------------------------------------
+_DOCKET_RE     = re.compile(r"\b[CTF]\s*[-–]?\s*\d{1,4}\s*/\s*\d{2}\b", re.I)
+_ART_NUM_RE    = re.compile(r"(?:art(?:ikel)?|article)\s*\.?\s*(\d+[a-z]?)", re.I)
+_PARA_SIGN_RE  = re.compile(r"§\s*(\d+[a-z]?)", re.I)
+
+def _extract_citation_patterns(q: str) -> list[re.Pattern]:
+    """Build concrete regexes only for docket/statute patterns present in the query."""
+    patterns: list[re.Pattern] = []
+    if _DOCKET_RE.search(q or ""):
+        patterns.append(_DOCKET_RE)
+    for num in _ART_NUM_RE.findall(q or ""):
+        patterns.append(re.compile(rf"\b(?:art(?:ikel)?|article)\s*\.?\s*{re.escape(num)}\b", re.I))
+    for num in _PARA_SIGN_RE.findall(q or ""):
+        patterns.append(re.compile(rf"§\s*{re.escape(num)}\b", re.I))
+    return patterns
+
+def _find_acronyms4_in_query(q: str) -> set[str]:
+    """
+    Return lowercased acronyms with >=4 chars and >=2 uppercase letters (covers WpHG/MAR/MIFIR).
+    """
+    acr: set[str] = set()
+    for tok in re.findall(r"\b[\w\-]+\b", q or ""):
+        # strip surrounding punctuation/hyphens for the test
+        raw = tok.strip()
+        if len(raw) >= 4 and sum(c.isupper() for c in raw) >= 2:
+            acr.add(raw.lower())
+    return acr
+
+def _extract_query_units_for_gate(q: str,
+                                  token_vocab: set[str],
+                                  phrase_vocab: set[str]) -> tuple[int, list[str], set[str], list[re.Pattern]]:
+    """
+    Compute 'Q' count (informative anchors) and the exact-match units:
+      - Q_count = (#phrases_in_booklet) + (#citation cues present) + (#acronyms4 present in vocab)
+      - Q_phrases_present: phrases (bigrams/trigrams) from query that actually appear in booklet
+      - Q_long: set of query unigrams (len >= 4) for Rule (2)
+      - citation_patterns: compiled regexes for Rule (3)
+    """
+    words = _words_basic(q)
+    # candidate phrases from query text
+    q_phrases = []
+    for n in (2, 3):
+        for i in range(len(words) - n + 1):
+            q_phrases.append(" ".join(words[i:i+n]))
+    # keep only phrases that actually appear in booklet
+    Q_phrases_present = [ph for ph in q_phrases if ph in phrase_vocab]
+
+    # citation/docket patterns present in the query
+    citation_patterns = _extract_citation_patterns(q)
+
+    # acronyms (>=4 chars, >=2 uppercase) present in the booklet vocab
+    acronyms4 = {a for a in _find_acronyms4_in_query(q) if a in token_vocab}
+
+    # long unigrams from the query (len >= 4), for Rule (2)
+    Q_long = {w for w in words if len(w) >= 4}
+
+    Q_count = len(Q_phrases_present) + len(citation_patterns) + len(acronyms4)
+    return Q_count, Q_phrases_present, Q_long, citation_patterns
+
+# --- Exact-match checks used by the Q<4 gate ----------------------------------
+def _contains_any_phrase(text: str, phrases: list[str]) -> bool:
+    if not phrases:
+        return False
+    t = _normalize_text_basic(text)
+    return any(ph and ph in t for ph in phrases)
+
+def _contains_all_tokens(text: str, tokens: set[str]) -> bool:
+    if not tokens:
+        return False
+    t_words = _tokenize_keep_acronyms((text or "").lower())
+    return tokens.issubset(t_words)
+
+def _matches_any_pattern(text: str, patterns: list[re.Pattern]) -> bool:
+    if not patterns:
+        return False
+    return any(p.search(text or "") for p in patterns)
+
+
+
 
 # --- Normalization helpers ----------------------------------------------------
 def _normalize_text_basic(s: str) -> str:
@@ -176,6 +285,7 @@ class ParagraphRetriever:
                   If provided, we build normalized paragraph embeddings for cosine similarity.
         """
         self.paragraphs = paragraphs
+        self._vocab_tokens, self._vocab_phrases = _build_booklet_vocabs(self.paragraphs)
         self.embedder = embedder
         self._emb = None
         if embedder:
@@ -232,38 +342,41 @@ class ParagraphRetriever:
         if not (query or "").strip():
             # Empty/whitespace query yields no meaningful retrieval
             return []
+        
+        
         # ------------------------------
-        # A0) Query informativeness gate
+        # A0) Query informativeness gate (Q >= 4 rule)
         # ------------------------------
-        Q_tokens, Q_phrases = _extract_query_units(query)
-        Q_long = {t for t in Q_tokens if len(t) >= 4}  # ignore tiny tokens in rule (2)
-        citation_patterns = _extract_citation_patterns(query)
+        Q_count, Q_phrases_present, Q_long, citation_patterns = _extract_query_units_for_gate(
+            query, self._vocab_tokens, self._vocab_phrases
+        )
 
-        if len(Q_tokens) < 4:
-            # Under-informative query: allow ONLY exact-match candidates (Rules 1–3)
+        if Q_count < 4:
+            # Under-informative query: allow ONLY exact-match candidates (Rules 1–3), then thresholds, cap=5.
             cand_idxs: list[int] = []
             for i, p in enumerate(self.paragraphs):
                 text = p.get("text", "")
-                rule1 = _contains_any_phrase(text, Q_phrases)                   # (1) phrase match
-                rule2 = (len(Q_long) > 0) and _contains_all_tokens(text, Q_long) # (2) all long tokens present
-                rule3 = (len(citation_patterns) > 0) and _matches_any_pattern(text, citation_patterns)  # (3) citation/docket
+                # (1) phrase present (from phrases that we KNOW occur in booklet)
+                rule1 = _contains_any_phrase(text, Q_phrases_present)
+                # (2) all long tokens present together  (only if we actually have >=2 long tokens)
+                rule2 = (len(Q_long) >= 2) and _contains_all_tokens(text, Q_long)
+                # (3) citation/docket pattern present
+                rule3 = (len(citation_patterns) > 0) and _matches_any_pattern(text, citation_patterns)
                 if rule1 or rule2 or rule3:
                     cand_idxs.append(i)
 
             if not cand_idxs:
-                return []  # nothing literal -> no booklet chunks
+                return []  # no literal anchors -> no booklet context
 
-            # Rank ONLY the candidate set (embed or lexical), then run the usual thresholds.
+            # Rank ONLY the candidate set, then apply your existing thresholds and cap.
             if mode == "embed":
-                # Build normalized query vector once
                 qv = self.embedder.encode([query], normalize_embeddings=True)[0]
                 qv = qv / (np.linalg.norm(qv) + 1e-12)
                 P = self._emb / (np.linalg.norm(self._emb, axis=1, keepdims=True) + 1e-12)
-                sims = np.dot(P[cand_idxs], qv)  # cosine similarities for candidates
+                sims = np.dot(P[cand_idxs], qv)
                 order = np.argsort(sims)[::-1]
                 ranked = [(float(sims[j]), self.paragraphs[cand_idxs[j]]) for j in order]
             else:
-                # Lexical score limited to candidates
                 scored: list[tuple[float, dict]] = []
                 for i in cand_idxs:
                     p = self.paragraphs[i]
@@ -297,7 +410,7 @@ class ParagraphRetriever:
                 if len(filtered) == min(5, top_k):   # <= TOP-5 CAP FOR Q<4
                     break
             return filtered
-        
+               
         # ------------------------------
         # A) Scoring (embed -> lexical)
         # ------------------------------
