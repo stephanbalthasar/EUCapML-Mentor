@@ -402,10 +402,19 @@ render_brand_bar_aligned(
 )
 
 # --- Build retrievers once ---
-embedder = STEmbedder(
-    model_name="paraphrase-multilingual-mpnet-base-v2",  # multilingual, 768-d
-    device="cpu"  # change to "cuda" if you run on a GPU host
-)
+@st.cache_resource(show_spinner=False)
+def get_embedder():
+    # lives in mentor.rag.booklet_retriever (same file as ParagraphRetriever)
+    from mentor.rag.booklet_retriever import STEmbedder
+    # Multilingual DE/EN, 768‑d
+    return STEmbedder(
+        model_name="paraphrase-multilingual-mpnet-base-v2",
+        device="cpu",              # change to "cuda" if you have a GPU
+        normalize_by_model=True,   # let ST normalize + we still normalize defensively
+    )
+
+embedder = get_embedder()
+
 para_retriever = ParagraphRetriever(INDEX["paragraphs"], embedder=embedder)
 chap_retriever = ChapterRetriever(INDEX["chapters"])
 
