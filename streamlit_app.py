@@ -500,7 +500,10 @@ with st.sidebar:
         st.caption("📦 Prompt source counts")
         # psc = {'booklet_used': n1, 'booklet_retrieved': n2, 'web_used': m1, 'web_retrieved': m2}
         st.write(psc)
-
+    mode = st.session_state.get("__chat_mode__")
+    if mode:
+        st.caption("💡 Chat mode")
+        st.write(mode)  # "FREEFORM" or "TUTOR"
 
 # --- Tabs: Feedback + Tutor chat ---
 tab_feedback, tab_chat = st.tabs(["📝 Sample Exam Cases", "💬 General Chat"])
