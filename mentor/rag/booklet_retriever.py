@@ -9,6 +9,79 @@ from typing import List, Dict, Tuple, Optional
 import numpy as np
 import string
 
+# --- Sentence-Transformers adapter (optional embedder) -----------------------
+# Enables embedding mode for ParagraphRetriever by wrapping any ST model.
+# Model examples:
+#   - 'paraphrase-multilingual-mpnet-base-v2' (multilingual, 768-d)  [recommended for DE/EN]
+#   - 'all-MiniLM-L6-v2' (English, 384-d, very fast)
+# See docs / model cards for details.  (Hugging Face / SBERT)
+try:
+    from sentence_transformers import SentenceTransformer  # pip install sentence-transformers
+except Exception:
+    SentenceTransformer = None
+
+class STEmbedder:
+    """
+    Thin adapter so our retriever can use Sentence-Transformers models.
+
+    Parameters
+    ----------
+    model_name : str
+        Any Sentence-Transformers checkpoint, e.g.:
+        'paraphrase-multilingual-mpnet-base-v2' (multilingual, 768-d)
+        'all-MiniLM-L6-v2' (English, 384-d)
+
+    device : str
+        'cpu' (default) or a CUDA device string like 'cuda' / 'cuda:0' if available.
+
+    normalize_by_model : bool
+        If True, pass normalize_embeddings=True into model.encode().
+        Regardless of this flag, we still L2-normalize defensively if requested
+        by the caller via normalize_embeddings=True.
+
+    Notes
+    -----
+    - The adapter exposes .encode(list[str], normalize_embeddings=True|False) -> np.ndarray
+      which is exactly what ParagraphRetriever expects.
+    """
+    def __init__(self, model_name: str, device: str = "cpu", normalize_by_model: bool = True):
+        if SentenceTransformer is None:
+            raise ImportError(
+                "sentence-transformers is not installed. "
+                "Run: pip install -U sentence-transformers"
+            )
+        self._model = SentenceTransformer(model_name, device=device)
+        self._normalize_by_model = normalize_by_model
+
+    def encode(self, texts, normalize_embeddings: bool = True):
+        if not texts:
+            return np.zeros((0, 1), dtype=np.float32)
+        # Some ST versions support normalize_embeddings directly; we pass it through.
+        try:
+            vecs = self._model.encode(
+                texts,
+                batch_size=64,
+                show_progress_bar=False,
+                convert_to_numpy=True,
+                normalize_embeddings=(normalize_embeddings and self._normalize_by_model),
+            )
+        except TypeError:
+            # Older ST versions may not expose normalize_embeddings; fall back to raw + manual L2
+            vecs = self._model.encode(
+                texts,
+                batch_size=64,
+                show_progress_bar=False,
+                convert_to_numpy=True,
+            )
+        vecs = vecs.astype(np.float32, copy=False)
+        if normalize_embeddings:
+            # Defensive L2-normalization (idempotent if already normalized)
+            denom = np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12
+            vecs = vecs / denom
+        return vecs
+# -----------------------------------------------------------------------------
+
+
 # --- tiny helper to keep acronyms like MAR, WpHG, ESMA, MiCA ---
 _PUNCT_TABLE = str.maketrans("", "", string.punctuation)
 
