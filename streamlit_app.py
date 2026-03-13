@@ -474,6 +474,15 @@ with st.sidebar:
         with st.sidebar:
             st.caption("🌐 Web retriever debug")
             st.write(dbg)
+    
+    # 🧱 NEW: prompt source counts (booklet vs web actually used in the prompt)
+    psc = st.session_state.get("__prompt_source_counts__")
+    if psc:
+        st.divider()
+        st.caption("📦 Prompt source counts")
+        # psc = {'booklet_used': n1, 'booklet_retrieved': n2, 'web_used': m1, 'web_retrieved': m2}
+        st.write(psc)
+
 
 # --- Tabs: Feedback + Tutor chat ---
 tab_feedback, tab_chat = st.tabs(["📝 Sample Exam Cases", "💬 General Chat"])
