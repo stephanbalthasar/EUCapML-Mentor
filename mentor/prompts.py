@@ -191,6 +191,39 @@ def build_tutor_messages(
         {"role": "user", "content": user_content},
     ]
 
+# --- Free-answer mode (used when no booklet and no web snippets are present) ---
+def build_freeform_messages(
+    user_query: str,
+    conversation_preamble: str | None = None,
+    *,
+    max_sentences: int = 6
+) -> list[dict]:
+    """
+    Minimal, permissive prompt used when we have zero booklet chunks and zero web snippets.
+    Lets the model answer from general knowledge (short, safe), without negative priming like "None".
+    """
+    system = (
+        "You are a concise EU capital markets law assistant.\n"
+        f"Give a short, accurate answer from your general knowledge in ≤ {max_sentences} sentences.\n"
+        "You may mention related cases/issues by NAME if clearly relevant, but avoid case numbers, years, or paragraph numbers "
+        "unless they appear in the user’s literal text. If you are unsure about a detail, say so briefly.\n"
+        "Offer, but do not insist, to search official sources (EUR‑Lex/CURIA/ESMA/BaFin) if the user wants a grounded reference."
+    )
+
+    convo_block = (
+        f"Conversation so far (most recent last):\n{conversation_preamble}\n\n"
+        if conversation_preamble else ""
+    )
+    user = (
+        f"{convo_block}"
+        f"USER QUESTION:\n{(user_query or '').strip()}\n\n"
+        "Please answer clearly and briefly from general knowledge."
+    )
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
 def build_followup_messages(previous_feedback: str,
                             followup_question: str,
                             max_words: int = FOLLOWUP_MAX_WORDS,
