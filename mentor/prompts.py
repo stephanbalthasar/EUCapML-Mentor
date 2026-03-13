@@ -87,37 +87,50 @@ def build_plan_messages(case_text: str,
     return [{"role": "system", "content": system},
             {"role": "user",   "content": user}]
 
-# --- General tutor chat (grounded with safe fallback and controlled augmentation) ---
+# --- General tutor chat (grounded; controlled augmentation; safety) ---
 SYSTEM_TUTOR = (
     "You are a helpful EU/German capital markets law tutor.\n"
     "\n"
-    "GROUNDING & FALLBACK RULES (must follow):\n"
-    "• If booklet excerpts and/or web snippets are provided (GROUNDED mode), treat them as the PRIMARY evidence. Rely on them first and avoid claims that are not supported by them.\n"
-    "• In GROUNDED mode you MAY add brief, non‑authoritative background to connect the dots (definitions, short context), but you MUST NOT introduce new authorities (no new cases, statutes, paragraph numbers, or pinpoint citations) that are not present in the provided context. Never contradict the excerpts/snippets; if they diverge from common background, defer to them or flag the mismatch succinctly.\n"
-    "• If neither booklet excerpts nor web snippets are provided (UNGROUNDED mode), still answer with a concise general background from your own knowledge and CLEARLY prefix the first line with: 'General background (no booklet/web):'. Do NOT invent case numbers, paragraph numbers, or citations. Offer to search official sources (EUR‑Lex/CURIA/ESMA/BaFin) if the user wants grounded references.\n"
+    "GROUNDING & AUGMENTATION (must follow):\n"
+    "• GROUNDED mode (booklet/web provided): Treat the excerpts/snippets as the PRIMARY evidence. Rely on them first. "
+    "You MAY add brief, non‑authoritative background (definitions, short context) and up to TWO related precedents by NAME only, "
+    "each in ≤1 line, when they are clearly relevant. Do NOT introduce identifiers (case numbers, years, paragraph numbers) "
+    "or new citations unless they already appear in the provided context or in the user’s literal text. Never contradict the excerpts/snippets; "
+    "if common background diverges, defer to the provided material or flag the mismatch succinctly.\n"
+    "• UNGROUNDED mode (no booklet/web): Give a concise general background and clearly prefix the first line with "
+    "'General background (no booklet/web):'. You MAY add at most ONE related precedent by NAME only if you are highly confident "
+    "it is relevant and correctly characterized. Otherwise omit it and offer to search EUR‑Lex/CURIA/ESMA/BaFin for grounded details. "
+    "Do NOT state identifiers (case numbers, years, paragraph numbers) unless they appear in the user’s literal string.\n"
+    "\n"
+    "SAFETY & SELF‑CHECK:\n"
+    "• Never fabricate authorities. If your draft contains 'Case C‑', four‑digit years, or paragraph numbers that do not appear "
+    "in the provided context or in the user’s literal string, remove them before finalizing.\n"
     "\n"
     "STYLE:\n"
-    "• Be clear and compact by default (≈3–5 sentences or 3–5 bullets).\n"
-    "• If no concrete legal question is asked, request one and stop.\n"
-    "• Never fabricate authorities; never imply you saw sources you were not given.\n"
+    "• Be clear and compact by default (≈3–5 sentences or 3–5 bullets). "
+    "If no concrete legal question is asked, request one and stop.\n"
 )
+
 def build_tutor_messages(
     user_query: str,
     booklet_chunks: list[str],
     web_snippets: list[str],
     conversation_preamble: str | None = None,
     *,
-    # Optional: if you later pass a retrieval score gap (e.g., top - median),
-    # we will use it to decide STRONG vs WEAK. If None, we fall back to counts.
-    similarity_gap_hint: float | None = None,
+    similarity_gap_hint: float | None = None,  # optional; counts-based if None
 ) -> list[dict]:
     """
-    Centralized prompt for the general tutor chat.
-    - conversation_preamble: compact transcript (optional)
-    - booklet_chunks: up to 15 snippets (already trimmed by the engine)
-    - web_snippets: up to 4 snippets
-    - similarity_gap_hint: optional float (e.g., top_score - median_score from retriever)
+    General tutor chat prompt.
+
+    Adds:
+      • GROUNDING MODE (GROUNDED | UNGROUNDED)
+      • CONTEXT STRENGTH (STRONG | WEAK)
+      • CASE_ID_ALLOWED (YES | NO)  -> whether identifiers can be shown
+      • AUGMENTATION_WINDOW (UP_TO_2 | UP_TO_1 | NONE)
+
+    Identifiers (case numbers/years/paras) are permitted only when they appear in the user text or provided sources.
     """
+    import re
 
     # --- Conversation preamble (optional) ---
     convo_block = (
@@ -125,36 +138,52 @@ def build_tutor_messages(
         if conversation_preamble else ""
     )
 
-    # --- Grounding mode & simple strength heuristic ---
+    # --- Mode & strength ---
     has_booklet = bool(booklet_chunks)
     has_web = bool(web_snippets)
     grounding_mode = "GROUNDED" if (has_booklet or has_web) else "UNGROUNDED"
 
-    # Effective counts (your builder slices to these limits anyway)
     b_count = min(len(booklet_chunks or []), 15)
     w_count = min(len(web_snippets or []), 4)
 
-    # Tiny rule for CONTEXT STRENGTH:
-    # 1) If a similarity gap hint is provided, treat >=0.08 as STRONG, else WEAK.
-    # 2) Otherwise, counts-based default:
-    #    STRONG if (b_count >= 8) or (w_count >= 2); else WEAK.
     if similarity_gap_hint is not None:
         context_strength = "STRONG" if float(similarity_gap_hint) >= 0.08 else "WEAK"
     else:
         context_strength = "STRONG" if (b_count >= 8 or w_count >= 2) else "WEAK"
 
-    # --- Material blocks ---
-    booklet_block = "\n\n".join(f"- {c}" for c in (booklet_chunks or [])[:15]) or "None"
-    web_block = "\n\n".join(f"- {s}" for s in (web_snippets or [])[:4]) or "None"
+    # --- Identifier safety: allow case numbers/years only if present in user or sources ---
+    text_for_id_check = " ".join([
+        user_query or "",
+        " ".join((booklet_chunks or [])[:15]),
+        " ".join((web_snippets or [])[:4]),
+    ])
 
-    # --- User content with explicit mode/strength line ---
+    has_docket = bool(re.search(r"\b[CTF]\s*[-–]?\s*\d{1,4}\s*/\s*\d{2}\b", text_for_id_check, flags=re.I))
+    has_year   = bool(re.search(r"\b(19|20)\d{2}\b", text_for_id_check))
+    has_para   = bool(re.search(r"\bpara(?:graph)?\s*\d+\b", text_for_id_check, flags=re.I))
+
+    case_id_allowed = "YES" if (has_docket or has_year or has_para) else "NO"
+
+    # --- Augmentation window ---------------------------------------------------
+    # GROUNDED -> up to 2 related precedents by NAME only
+    # UNGROUNDED -> up to 1 by NAME only (only if highly confident); else omit
+    augmentation_window = "UP_TO_2" if grounding_mode == "GROUNDED" else "UP_TO_1"
+
+    # --- Material blocks -------------------------------------------------------
+    booklet_block = "\n\n".join(f"- {c}" for c in (booklet_chunks or [])[:15]) or "None"
+    web_block     = "\n\n".join(f"- {s}" for s in (web_snippets or [])[:4]) or "None"
+
+    # --- User content with explicit operating tags ----------------------------
     user_content = (
         f"{convo_block}"
-        f"GROUNDING MODE: {grounding_mode}    CONTEXT STRENGTH: {context_strength}\n\n"
+        f"GROUNDING MODE: {grounding_mode}    CONTEXT STRENGTH: {context_strength}\n"
+        f"CASE_ID_ALLOWED: {case_id_allowed}    AUGMENTATION_WINDOW: {augmentation_window}\n\n"
         f"USER QUERY:\n{user_query}\n\n"
         f"RELEVANT BOOKLET EXCERPTS:\n{booklet_block}\n\n"
         f"RELEVANT WEB SNIPPETS:\n{web_block}\n\n"
-        "Please answer clearly and concisely. Follow the GROUNDING & FALLBACK RULES from the system message.\n"
+        "Please answer clearly and concisely. Follow the GROUNDING & AUGMENTATION rules from the system message.\n"
+        "When adding related precedents, mention NAME only (no identifiers) and summarize relevance in ≤1 line each. "
+        "If CASE_ID_ALLOWED is NO, do not include numbers/years/paras even if you know them.\n"
     )
 
     return [
