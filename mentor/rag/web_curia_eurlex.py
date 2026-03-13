@@ -12,7 +12,7 @@ from typing import List
 from urllib.parse import unquote
 
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
 except ImportError:
     DDGS = None
 
