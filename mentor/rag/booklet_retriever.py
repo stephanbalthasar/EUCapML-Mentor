@@ -1,47 +1,39 @@
 # -*- coding: utf-8 -*-
 """
-Back-compat retrievers with optional JSONL-over-GitHub contents loading.
+Minimal legal retriever (Option B):
+1) Extract "strong tokens" from the user query (e.g., Lafonta, MAR, Art. 7(1), C-628/13).
+2) Exact substring filter (case-insensitive). If any hits -> return top-K by (#matches, shorter text).
+3) Otherwise fall back to BM25 over the booklet JSONL.
+4) If BM25 was used, optionally re-rank top candidates with a Sentence-Transformers model (CPU).
+5) No hard similarity floor; never silently return zero if there are literal matches.
 
-Path secrets (read from Streamlit secrets first, then environment):
+Source of truth: ONLY the remote JSONL configured via BOOKLET_REPO/REF/PATH.
+No local fallback. If the JSONL cannot be fetched, we fail fast with a clear error.
+
+Expected to be constructed as ParagraphRetriever(...), and used via .search(query, top_k,...)
+to stay compatible with your ChatEngine (it prefers .search if present).
+
+Environment / Streamlit secrets:
   BOOKLET_REPO  -> e.g. "stephanbalthasar/EUCapML-Mentor-Content"
   BOOKLET_REF   -> e.g. "main"
   BOOKLET_PATH  -> e.g. "artifacts/booklet_index.jsonl"
+  (optional token priority: GITHUB_TOKEN -> REPO_XPAT -> BOOKLET_TOKEN)
 
-Token priority (first present wins):
-  1) GITHUB_TOKEN   (st.secrets / env)
-  2) REPO_XPAT      (st.secrets / env)
-  3) BOOKLET_TOKEN  (st.secrets / env)  # optional fallback
-
-Optional tuning:
-  BOOKLET_MIN_SIM -> similarity floor in [0,1], default 0.38
-
-Behavior:
-- If BOOKLET_REPO/REF/PATH are present, ParagraphRetriever loads the JSONL from:
-      https://raw.githubusercontent.com/{BOOKLET_REPO}/{BOOKLET_REF}/{BOOKLET_PATH}
-  using the token above if present.
-- Otherwise, it falls back to legacy lexical retrieval over the passed-in
-  paragraphs list (as used by your existing app).
-
-Threshold is enforced INSIDE the retriever (no second gate in the chat layer).
+Optional knobs (env/secrets):
+  BOOKLET_DEVICE = "cpu" (default)  # for SentenceTransformer
 """
 
 from __future__ import annotations
+
+import io
 import os
 import re
-import io
 import json
-import math
-import sys
 from typing import List, Dict, Optional, Tuple
-import numpy as np
 
-# optional deps (graceful fallback)
-try:
-    from sentence_transformers import SentenceTransformer
-    _HAS_ST = True
-except Exception:
-    _HAS_ST = False
+import requests
 
+# Optional libraries; degrade gracefully.
 try:
     from rank_bm25 import BM25Okapi
     _HAS_BM25 = True
@@ -49,220 +41,30 @@ except Exception:
     _HAS_BM25 = False
 
 try:
-    import numpy as np
-except Exception as e:
-    raise RuntimeError("This retriever requires numpy. Please `pip install numpy`.") from e
+    from sentence_transformers import SentenceTransformer
+    import numpy as _np
+    _HAS_ST = True
+except Exception:
+    _HAS_ST = False
+    _np = None  # type: ignore
 
-try:
-    import requests
-except Exception as e:
-    raise RuntimeError("This retriever fetches JSONL via HTTP; please `pip install requests`.") from e
-
-# Streamlit secrets (optional); we fall back to env if missing
+# Streamlit secrets are convenient, but we also accept pure env.
 try:
     import streamlit as st  # noqa
 except Exception:
     st = None
 
 
-# ----------------- simple text utils -----------------
-_TOKEN_RE = re.compile(r"[A-Za-zÄÖÜäöüß]+", re.UNICODE)
-_EN_STOP = {
-    "the","a","an","and","or","but","of","in","to","is","are","was","were","on","for",
-    "with","as","by","at","from","that","this","it","be","been","will","would","can",
-    "could","should","under","per","such"
-}
-_DE_STOP = {
-    "der","die","das","und","oder","aber","nicht","mit","auf","aus","bei","durch","gegen",
-    "ohne","unter","vom","zur","zum","gemäß","auch","sowie","daher","soweit","darüber",
-    "hierzu","hiervon","hierfür","ist","sind","war","waren","einer","einem","einen","eines",
-    "denn","doch","noch","schon"
-}
+# ------------------------------- small helpers -------------------------------
 
-def _tokenize(text: str, lang_hint: Optional[str] = None) -> List[str]:
-    t = (text or "").lower()
-    toks = _TOKEN_RE.findall(t)
-    stop = _DE_STOP if lang_hint == "de" else _EN_STOP
-    return [w for w in toks if w not in stop]
+# Keep letters, digits, and legal punctuation used in citations (§, (), /, -).
+# This tokenizer is used for BM25; it's intentionally simple and robust.
+_TOKEN_RE = re.compile(r"[A-Za-zÄÖÜäöüß]+(?:[()\-/§\d]*[A-Za-zÄÖÜäöüß\d]*)*|\d+[()\-/\d]*", re.UNICODE)
 
-def _detect_lang_quick(s: str) -> str:
-    s_low = (s or "").lower()
-    if any(c in s_low for c in "äöüß"):
-        return "de"
-    toks = _TOKEN_RE.findall(s_low)
-    if not toks:
-        return "en"
-    de = sum(1 for w in toks if w in _DE_STOP)
-    return "de" if de / max(1, len(toks)) > 0.08 else "en"
+# Very lightweight stopwords to remove conversational fluff; legal abbreviations remain.
+_STOP_EN = {"the", "a", "an", "and", "or", "but", "of", "in", "on", "for", "to", "is", "are", "was", "were", "be", "been", "can", "could", "would", "should", "with", "as", "by", "at", "from", "that", "this", "it", "about", "there", "anything", "tell", "me"}
+_STOP_DE = {"der", "die", "das", "und", "oder", "aber", "mit", "ohne", "auf", "aus", "bei", "durch", "gegen", "unter", "vom", "zur", "zum", "gemäß", "ist", "sind", "war", "waren"}
 
-def _normalize(v: np.ndarray) -> np.ndarray:
-    if v.size == 0:
-        return v
-    vmin, vmax = float(v.min()), float(v.max())
-    if math.isclose(vmax, vmin):
-        return np.zeros_like(v)
-    return (v - vmin) / (vmax - vmin)
-
-def _l2norm_rows(x: np.ndarray) -> np.ndarray:
-    norms = np.linalg.norm(x, axis=1, keepdims=True) + 1e-12
-    return x / norms
-
-
-# ----------------- JSONL-backed hybrid retriever -----------------
-class _BookletRetriever:
-    """
-    Internal: JSONL-backed hybrid retriever.
-    Exposes .search(query, top_k, min_sim) and returns list[dict] with:
-        {"text", "node_id", "anchor", "type", "score", "dense", "lexical", "lang", "links"}
-    """
-
-    def __init__(
-        self,
-        jsonl_url: str,                # raw.githubusercontent.com URL
-        http_token: Optional[str] = None,
-        include_types: Tuple[str, ...] = ("paragraph", "case_note", "footnote"),
-        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-        dense_weight: float = 0.55,
-        lexical_weight: float = 0.45,
-    ):
-        self.jsonl_url = jsonl_url
-        self.http_token = http_token
-        self.include_types = include_types
-        self.model_name = model_name
-        self.dense_weight = dense_weight
-        self.lexical_weight = lexical_weight
-
-        self.nodes: List[Dict] = []
-        self.texts: List[str] = []
-        self.langs: List[str] = []
-
-        # dense
-        self._st_model = None
-        self._emb_matrix = None
-
-        # lexical
-        self._bm25 = None
-
-        self._load_nodes()
-        self._build_lexical()
-        self._build_dense()
-
-    # ---- loading ----
-    def _load_nodes(self):
-        headers = {"Authorization": f"token {self.http_token}"} if self.http_token else {}
-        r = requests.get(self.jsonl_url, headers=headers, timeout=30)
-        if r.status_code != 200:
-            raise RuntimeError(f"Failed to fetch JSONL {r.status_code}: {self.jsonl_url}")
-
-        stream = io.StringIO(r.text)
-        for raw in stream:
-            line = raw.strip()
-            if not line:
-                continue
-            d = json.loads(line)
-            if d.get("type") not in self.include_types:
-                continue
-            text = (d.get("text") or "").strip()
-            if not text:
-                continue
-            self.nodes.append(d)
-
-        self.texts = [n["text"] for n in self.nodes]
-        self.langs = [n.get("lang", _detect_lang_quick(n["text"])) for n in self.nodes]
-
-    def _build_lexical(self):
-        if not _HAS_BM25:
-            sys.stderr.write("[retriever] rank-bm25 not installed → lexical disabled\n")
-            self._bm25 = None
-            return
-        tokenized = [_tokenize(t, lang_hint=lang) for t, lang in zip(self.texts, self.langs)]
-        self._bm25 = BM25Okapi(tokenized)
-
-    def _build_dense(self):
-        """
-        Load the Sentence-Transformers model on CPU (safe default).
-        If anything fails (torch/device/dtype issues), disable dense retrieval
-        and keep lexical-only so the app never crashes.
-        """
-        if not _HAS_ST:
-            sys.stderr.write("[retriever] sentence-transformers not installed → dense disabled (lexical-only)\n")
-            self._st_model = None
-            self._emb_matrix = None
-            return
-    
-        # Allow explicit opt-out via env/secret if you ever need it
-        if os.getenv("BOOKLET_DISABLE_EMBEDDINGS", "").strip() in {"1", "true", "True", "yes"}:
-            sys.stderr.write("[retriever] embeddings disabled by BOOKLET_DISABLE_EMBEDDINGS\n")
-            self._st_model = None
-            self._emb_matrix = None
-            return
-    
-        try:
-            # Force CPU to avoid NotImplementedError on unsupported devices
-            device = os.getenv("BOOKLET_DEVICE", "cpu")
-            self._st_model = SentenceTransformer(self.model_name, device=device)
-    
-            embs = self._st_model.encode(
-                self.texts,
-                batch_size=64,
-                normalize_embeddings=False,
-                show_progress_bar=False
-            )
-            embs = np.asarray(embs, dtype=np.float32)
-            self._emb_matrix = _l2norm_rows(embs)
-    
-        except Exception as e:
-            # Fail safe: keep app running with BM25-only
-            sys.stderr.write(f"[retriever] dense embeddings disabled ({type(e).__name__}: {e}) → lexical-only\n")
-            self._st_model = None
-            self._emb_matrix = None
-
-    # ---- search ----
-    def search(self, query: str, top_k: int = 6, min_sim: float = 0.01) -> List[Dict]:
-        if not query or not query.strip():
-            return []
-
-        dense_scores = np.zeros(len(self.texts), dtype=np.float32)
-        if self._st_model is not None and self._emb_matrix is not None:
-            q_vec = self._st_model.encode([query], normalize_embeddings=False)[0].astype(np.float32)
-            q_vec = q_vec / (np.linalg.norm(q_vec) + 1e-12)
-            dense_scores = (self._emb_matrix @ q_vec + 1.0) / 2.0  # [-1,1] -> [0,1]
-
-        lexical_scores = np.zeros(len(self.texts), dtype=np.float32)
-        if self._bm25 is not None:
-            toks = _tokenize(query, lang_hint=_detect_lang_quick(query))
-            raw = np.array(self._bm25.get_scores(toks), dtype=np.float32)
-            lexical_scores = _normalize(raw)
-
-        alpha, beta = float(self.dense_weight), float(self.lexical_weight)
-        if math.isclose(alpha + beta, 0.0):
-            alpha, beta = 0.0, 1.0
-        combined = alpha * dense_scores + beta * lexical_scores
-
-        order = np.argsort(-combined)
-        hits = []
-        for i in order[: max(200, top_k * 5)]:
-            score = float(combined[i])
-            if score < float(min_sim):
-                continue
-            n = self.nodes[i]
-            hits.append({
-                "text": n["text"],
-                "node_id": n.get("node_id",""),
-                "anchor": n.get("anchor",""),
-                "type": n.get("type","paragraph"),
-                "score": score,
-                "dense": float(dense_scores[i]),
-                "lexical": float(lexical_scores[i]),
-                "lang": n.get("lang","en"),
-                "links": n.get("links",{}),
-            })
-            if len(hits) >= top_k:
-                break
-        return hits
-
-
-# ----------------- Back-compat public classes -----------------
 def _secret_or_env(key: str) -> Optional[str]:
     if st is not None:
         try:
@@ -273,91 +75,240 @@ def _secret_or_env(key: str) -> Optional[str]:
             pass
     return os.getenv(key)
 
-def _build_raw_url_from_secrets() -> Optional[tuple[str, Optional[str]]]:
-    """
-    Returns (raw_url, token) if BOOKLET_REPO/REF/PATH are set in secrets or env,
-    else None. Token priority: GITHUB_TOKEN -> REPO_XPAT -> BOOKLET_TOKEN.
-    """
+def _build_raw_url_from_secrets() -> Tuple[str, Optional[str]]:
     repo = _secret_or_env("BOOKLET_REPO")
     ref  = _secret_or_env("BOOKLET_REF")
     path = _secret_or_env("BOOKLET_PATH")
     if not (repo and ref and path):
-        return None
+        raise RuntimeError("Booklet retriever misconfigured: set BOOKLET_REPO, BOOKLET_REF, BOOKLET_PATH.")
     raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{path}"
-    token   = (
-        _secret_or_env("GITHUB_TOKEN")
-        or _secret_or_env("REPO_XPAT")
-        or _secret_or_env("BOOKLET_TOKEN")
-    )
-    return (raw_url, token)
+    token = (_secret_or_env("GITHUB_TOKEN")
+             or _secret_or_env("REPO_XPAT")
+             or _secret_or_env("BOOKLET_TOKEN"))
+    return raw_url, token
+
+def _fetch_jsonl(raw_url: str, token: Optional[str]) -> str:
+    headers = {"Authorization": f"token {token}"} if token else {}
+    r = requests.get(raw_url, headers=headers, timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(f"Failed to fetch booklet JSONL (HTTP {r.status_code}).")
+    return r.text
+
+def _tokenize_legal(text: str, lang_hint: Optional[str] = None) -> List[str]:
+    s = (text or "").lower()
+    toks = [t for t in _TOKEN_RE.findall(s) if t]
+    if lang_hint == "de":
+        return [t for t in toks if t not in _STOP_DE]
+    if lang_hint == "en":
+        return [t for t in toks if t not in _STOP_EN]
+    # No reliable lang detection needed; queries are short. Apply both lists lightly.
+    return [t for t in toks if t not in _STOP_EN and t not in _STOP_DE]
+
+def _strong_tokens(query: str) -> List[str]:
+    """
+    Extract "strong tokens":
+      - capitalized tokens not at sentence start (simple heuristic),
+      - ALL-CAPS abbreviations (e.g., MAR, ECJ),
+      - tokens containing digits or legal punctuation: (), /, -, § (e.g., 7(1), C-628/13, §15),
+    We keep them as raw substrings and use case-insensitive substring search.
+    """
+    q = query.strip()
+    if not q:
+        return []
+    # Split on whitespace, keep punctuation within tokens (for citations).
+    rough = re.findall(r"[^\s]+", q)
+    strong: List[str] = []
+
+    # Heuristics
+    for i, tok in enumerate(rough):
+        # Normalize fancy hyphens
+        t = tok.replace("‑", "-").replace("–", "-").strip(".,;:!?()[]{}\"'“”‘’")
+        if not t:
+            continue
+        # ALL-CAPS legal abbreviations (length >= 2)
+        if re.fullmatch(r"[A-ZÄÖÜ]{2,}", t):
+            strong.append(t)
+            continue
+        # Contains digits or legal punctuation -> likely a citation
+        if re.search(r"[0-9§()/\-]", t):
+            strong.append(t)
+            continue
+        # Capitalized non-initial proper noun (very light heuristic)
+        if i > 0 and re.fullmatch(r"[A-ZÄÖÜ][a-zäöüß]+", t):
+            strong.append(t)
+            continue
+
+    # Deduplicate, preserve order
+    seen = set()
+    out = []
+    for t in strong:
+        key = t.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(t)
+    return out
+
+
+# ----------------------------- main retriever class -----------------------------
 
 class ParagraphRetriever:
     """
-    Your existing app constructs this with INDEX["paragraphs"].
-    With BOOKLET_REPO/REF/PATH set, this class loads the JSONL from your private repo
-    (hybrid retrieval). Otherwise it falls back to BM25 over the provided list.
+    Minimal, deterministic retriever for your booklet JSONL.
+
+    Usage:
+        r = ParagraphRetriever(paragraphs_ignored)
+        hits = r.search("ECJ decision in Lafonta", top_k=8)
+
+    Returns: list[dict] with keys: text, score, rank, node_id, doc_id, type, anchor, breadcrumb, lang
     """
-    def __init__(self, paragraphs: List[Dict]):
-        self._min_sim = float(_secret_or_env("BOOKLET_MIN_SIM") or "0.38")
-        ru = _build_raw_url_from_secrets()
 
-        self._hybrid: Optional[_BookletRetriever] = None
-        self._bm25_only = None
-        self._bm25_docs: List[str] = []
+    def __init__(self, _paragraphs_ignored=None):
+        # Load JSONL from remote only (explicit). No local fallback.
+        raw_url, token = _build_raw_url_from_secrets()
+        text = _fetch_jsonl(raw_url, token)
 
-        if ru:
-            raw_url, token = ru
-            self._hybrid = _BookletRetriever(
-                jsonl_url=raw_url,
-                http_token=token,
-                include_types=("paragraph","case_note","footnote"),
-            )
-        else:
-            # Legacy lexical-only path over the provided paragraphs
-            if not _HAS_BM25:
-                sys.stderr.write("[retriever] rank-bm25 not installed; legacy lexical disabled\n")
-            texts = []
-            for p in (paragraphs or []):
-                t = (p.get("text") if isinstance(p, dict) else str(p)).strip()
-                if t:
-                    texts.append(t)
-            self._bm25_docs = texts
-            if _HAS_BM25 and texts:
-                self._bm25_only = BM25Okapi([_tokenize(t) for t in texts])
+        self.nodes: List[Dict] = []
+        self._texts_lower: List[str] = []
 
-    def retrieve(self, query: str, top_k: int = 15) -> List[Dict]:
+        for line in io.StringIO(text):
+            s = line.strip()
+            if not s:
+                continue
+            try:
+                d = json.loads(s)
+            except Exception:
+                continue
+            t = (d.get("text") or "").strip()
+            if not t:
+                continue
+            # Accept all types that carry content; you can narrow if needed.
+            dtype = d.get("type", "paragraph")
+            if dtype not in {"paragraph", "case_note", "footnote", "heading"}:
+                continue
+            self.nodes.append(d)
+            self._texts_lower.append(t.lower())
+
+        if not self.nodes:
+            raise RuntimeError("Booklet JSONL loaded but contained no usable nodes.")
+
+        # Build BM25 index if library is available.
+        self._bm25 = None
+        if _HAS_BM25:
+            corpus_tokens = [_tokenize_legal(n.get("text", "")) for n in self.nodes]
+            self._bm25 = BM25Okapi(corpus_tokens)
+
+        # Optional Sentence-Transformers model for semantic re-ranking
+        self._st = None
+        if _HAS_ST:
+            device = _secret_or_env("BOOKLET_DEVICE") or "cpu"
+            try:
+                self._st = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device=device)
+            except Exception:
+                self._st = None  # run lexical-only if it fails
+
+    # ----------------------------- public API -----------------------------
+
+    def search(self, query: str, top_k: int = 8, **_kwargs) -> List[Dict]:
         """
-        Returns list[dict] with {"text": "..."} to keep your prompt builder unchanged.
+        Exact-match first; BM25 fallback; optional semantic re-rank on fallback.
+        Never applies a hard similarity floor. Returns up to top_k results.
         """
-        if self._hybrid:
-            hits = self._hybrid.search(query=query, top_k=top_k, min_sim=self._min_sim)
-            return [{"text": h["text"]} for h in hits]
-
-        # Legacy lexical fallback
-        if not query or not query.strip() or not self._bm25_only:
+        q = (query or "").strip()
+        if not q:
             return []
-        toks = _tokenize(query)
-        raw = np.array(self._bm25_only.get_scores(toks), dtype=np.float32)
-        order = np.argsort(-raw)
-        out = []
-        for i in order[:top_k]:
-            out.append({"text": self._bm25_docs[int(i)]})
+
+        strong = _strong_tokens(q)
+        # STEP 1: Exact substring filter (case-insensitive) if strong tokens exist.
+        if strong:
+            lower_tokens = [t.lower() for t in strong]
+            exact_hits: List[Tuple[int, int]] = []  # (node_idx, matched_count)
+
+            for i, txt_low in enumerate(self._texts_lower):
+                m = sum(1 for tok in lower_tokens if tok in txt_low)
+                if m > 0:
+                    exact_hits.append((i, m))
+
+            if exact_hits:
+                # Sort: more token matches first, then shorter text
+                exact_hits.sort(key=lambda x: (-x[1], len(self.nodes[x[0]].get("text", ""))))
+                return self._package_hits([idx for idx, _m in exact_hits[:top_k]], query=q, scores=None)
+
+        # STEP 2: BM25 fallback
+        if self._bm25 is None:
+            # No BM25 installed; do a trivial keyword scan as last resort.
+            toks = _tokenize_legal(q)
+            if not toks:
+                return []
+            scored: List[Tuple[int, int]] = []  # (node_idx, matches)
+            for i, txt_low in enumerate(self._texts_lower):
+                m = sum(1 for tok in toks if tok in txt_low)
+                if m > 0:
+                    scored.append((i, m))
+            if not scored:
+                return []
+            scored.sort(key=lambda x: (-x[1], len(self.nodes[x[0]].get("text", ""))))
+            return self._package_hits([i for i, _m in scored[:top_k]], query=q, scores=None)
+
+        # Proper BM25
+        q_tokens = _tokenize_legal(q)
+        bm25_scores = self._bm25.get_scores(q_tokens)
+        # Pick top-N candidates (cap to keep semantic re-rank fast)
+        import numpy as _np_local  # lightweight local import
+        arr = _np_local.asarray(bm25_scores)
+        if arr.size == 0:
+            return []
+        # Select top 50 indices (or fewer)
+        N = min(50, max(top_k * 4, 20))
+        top_idx = _np_local.argsort(-arr)[:N]
+        cand_idx = [int(i) for i in top_idx if arr[int(i)] > 0]
+        if not cand_idx:
+            return []
+
+        # Optional semantic re-ranking on candidates
+        if self._st is not None and len(cand_idx) > 1:
+            # Normalize BM25 to 0..1
+            bm = arr[cand_idx]
+            bmin, bmax = float(bm.min()), float(bm.max())
+            bm_norm = (bm - bmin) / (bmax - bmin + 1e-12) if bmax > bmin else _np_local.zeros_like(bm)
+
+            # Compute dense similarity for candidates
+            q_vec = self._st.encode([q], normalize_embeddings=True, show_progress_bar=False)[0]
+            cand_texts = [self.nodes[i].get("text", "") for i in cand_idx]
+            C = self._st.encode(cand_texts, normalize_embeddings=True, batch_size=64, show_progress_bar=False)
+            dense = (C @ q_vec)  # cosine in [-1,1]
+            dense = (dense + 1.0) / 2.0  # -> [0,1]
+
+            # Blend with a simple fixed weight (lexical-first)
+            final = 0.7 * bm_norm + 0.3 * dense
+            order = _np_local.argsort(-final)
+            ranked = [cand_idx[int(i)] for i in order[:top_k]]
+            # Pass blended scores back (optional)
+            scores = [float(final[int(i)]) for i in order[:top_k]]
+            return self._package_hits(ranked, query=q, scores=scores)
+
+        # No semantic model -> return BM25 top-K
+        # Note: sort BM25 top indices by score (descending) and limit to top_k
+        top_for_k = _np_local.argsort(-arr)[:top_k]
+        ranked = [int(i) for i in top_for_k if arr[int(i)] > 0]
+        return self._package_hits(ranked, query=q, scores=None)
+
+    # ----------------------------- packaging -----------------------------
+
+    def _package_hits(self, indices: List[int], query: str, scores: Optional[List[float]]) -> List[Dict]:
+        out: List[Dict] = []
+        for rank, i in enumerate(indices, start=1):
+            n = self.nodes[i]
+            item = {
+                "text": n.get("text", ""),
+                "score": (scores[rank - 1] if scores and rank - 1 < len(scores) else None),
+                "rank": rank,
+                "node_id": n.get("node_id"),
+                "doc_id": n.get("doc_id"),
+                "type": n.get("type"),
+                "anchor": n.get("anchor"),
+                "breadcrumb": n.get("breadcrumb"),
+                "lang": n.get("lang", None),
+                "links": n.get("links", {}),
+            }
+            out.append(item)
         return out
-
-
-class ChapterRetriever:
-    """
-    Kept for back-compat with imports. Not used when JSONL-backed retriever is active.
-    """
-    def __init__(self, chapters: List[Dict]):
-        self._chapters = chapters or []
-
-    def retrieve_best(self, query: str) -> Optional[Dict]:
-        if not self._chapters or not query:
-            return None
-        toks = set(_tokenize(query))
-        for ch in self._chapters:
-            text = (ch.get("text") or "").lower()
-            if any(tok in text for tok in toks):
-                return {"chapter_num": ch.get("chapter_num"), "text": ch.get("text","")}
-        return None
