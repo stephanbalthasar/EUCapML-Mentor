@@ -403,21 +403,7 @@ render_brand_bar_aligned(
 )
 
 # --- Build retrievers once ---
-# --- Build retriever once (new JSONL-based retriever) ---
-jsonl_path = os.getenv("BOOKLET_JSONL_PATH", "artifacts/booklet_index.jsonl")
-
-if not os.path.exists(jsonl_path):
-    st.error(
-        f"Booklet index not found at {jsonl_path}. "
-        "Set BOOKLET_JSONL_PATH or ensure artifacts/booklet_index.jsonl exists."
-    )
-    st.stop()
-
-booklet_retriever = BookletRetriever(
-    jsonl_path=jsonl_path,
-    include_types=("paragraph", "case_note", "footnote"),  # sections usually not needed
-    # You can keep default dense/lexical weights; threshold is configured in ChatEngine.answer via env.
-)
+para_retriever = ParagraphRetriever(INDEX["paragraphs"])
 
 # --- LLM client ---
 llm_api_key = st.secrets.get("GROQ_API_KEY")
