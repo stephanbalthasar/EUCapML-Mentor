@@ -111,18 +111,6 @@ class ChatEngine:
             max_tokens=max_tokens
         )
     
-        # --- Append deterministic footer with paragraph numbers (kept) ---
-        reply_text = result if isinstance(result, str) else str(result)
-        if para_nums:
-            footer = (
-                "\n\n---\n"
-                "_Also see paragraphs " + ", ".join(para_nums[:top_k]) + " in the course booklet._"
-            )
-            reply_text += footer
-    
-        return reply_text
-
-
     # -------- helpers (kept) --------------------
     def _extract_keywords(self, text):
         # TODO: later include legal keyword extraction
