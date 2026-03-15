@@ -26,7 +26,6 @@ class ChatEngine:
         import os
     
         # ---- Retrieval configuration (passed into retriever; no re-filtering here) ----
-        min_sim = float(os.getenv("BOOKLET_MIN_SIM", "0.38"))
         top_k = int(os.getenv("BOOKLET_TOP_K", "6"))
     
         # 1) Simple keyword extraction (kept)
@@ -39,8 +38,7 @@ class ChatEngine:
                 # New hybrid retriever path (BM25 + embeddings); threshold enforced inside retriever
                 hits = self.booklet_retriever.search(
                     query=user_query,
-                    top_k=top_k,
-                    min_sim=min_sim,
+                    top_k=top_k,                    
                 ) or []
             elif hasattr(self.booklet_retriever, "retrieve"):
                 # Legacy ParagraphRetriever-style API
