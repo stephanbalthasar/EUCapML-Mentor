@@ -15,29 +15,6 @@ class ChatEngine:
         self.booklet_retriever = booklet_retriever  # Prefer ParagraphRetriever
         self.web_retriever = web_retriever  # may be None for now
 
-    def answer_open(self, user_q: str, *, model: str, temperature: float, max_tokens: int = 700) -> str:
-        """
-        Pure conversational mode: no retrieval, no booklet grounding.
-        Uses 'messages' first (preferred by Groq + most modern clients),
-        but falls back to 'prompt' if the LLM client expects it.
-        """
-        # Preferred: chat-style call (messages)
-        try:
-            return self.llm.chat(
-                messages=[{"role": "user", "content": user_q}],
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-        except TypeError:
-            # Fallback for lightweight clients that only support `prompt`
-            return self.llm.chat(
-                prompt=user_q,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-    
     def answer(self, user_query, *, model, temperature, max_tokens=800):
         """
         One-purpose engine:
