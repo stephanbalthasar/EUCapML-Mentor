@@ -207,124 +207,90 @@ class ParagraphRetriever:
                 self._st = None  # run lexical-only if it fails
 
     # ----------------------------- public API -----------------------------
+
     def search(self, query: str, top_k: int = 8, **_kwargs) -> List[Dict]:
-      """
-      Exact-match first; BM25 fallback; optional semantic re-rank on fallback.
-      Now includes:
-        - Early return when query has no legal signal.
-        - BM25 zero-score guard (prevents irrelevant matches).
-      """
-      q = (query or "").strip()
-      if not q:
-          return []
-  
-      # Compute strong tokens
-      strong = _strong_tokens(q)
-  
-      # Compute BM25 tokens
-      # (Legal tokenization; empty for non-legal queries like greetings)
-      q_tokens = _tokenize_legal(q)
-  
-      # -------------------------------
-      # FIX A: Early return on no legal signal
-      # -------------------------------
-      if not strong and not q_tokens:
-          # Greeting / small talk / vague text → Nothing to retrieve
-          return []
-  
-      # -------------------------------
-      # STEP 1: Exact substring match if strong tokens exist
-      # -------------------------------
-      if strong:
-          lower_tokens = [t.lower() for t in strong]
-          exact_hits: List[Tuple[int, int]] = []  # (node_idx, matched_count)
-          for i, txt_low in enumerate(self._texts_lower):
-              m = sum(1 for tok in lower_tokens if tok in txt_low)
-              if m > 0:
-                  exact_hits.append((i, m))
-          if exact_hits:
-              exact_hits.sort(
-                  key=lambda x: (-x[1], len(self.nodes[x[0]].get("text", "")))
-              )
-              return self._package_hits(
-                  [idx for idx, _m in exact_hits[:top_k]], query=q, scores=None
-              )
-  
-      # -------------------------------
-      # STEP 2: BM25 fallback
-      # -------------------------------
-      if self._bm25 is None:
-          # Extremely rare; fallback keyword scan
-          if not q_tokens:
-              return []
-          scored: List[Tuple[int, int]] = []
-          for i, txt_low in enumerate(self._texts_lower):
-              m = sum(1 for tok in q_tokens if tok in txt_low)
-              if m > 0:
-                  scored.append((i, m))
-          if not scored:
-              return []
-          scored.sort(
-              key=lambda x: (-x[1], len(self.nodes[x[0]].get("text", "")))
-          )
-          return self._package_hits(
-              [i for i, _m in scored[:top_k]], query=q, scores=None
-          )
-  
-      # Proper BM25
-      bm25_scores = self._bm25.get_scores(q_tokens)
-      import numpy as _np_local
-      arr = _np_local.asarray(bm25_scores)
-  
-      # -------------------------------
-      # FIX B: BM25 zero-score guard
-      # -------------------------------
-      if arr.size == 0 or float(arr.max()) == 0.0:
-          # Means: the entire booklet has ZERO lexical relevance to the query.
-          return []
-  
-      # Top candidate selection
-      N = min(50, max(top_k * 4, 20))
-      top_idx = _np_local.argsort(-arr)[:N]
-      cand_idx = [int(i) for i in top_idx if arr[int(i)] > 0]
-  
-      if not cand_idx:
-          return []
-  
-      # Optional semantic re-ranking if model available
-      if self._st is not None and len(cand_idx) > 1:
-          bm = arr[cand_idx]
-          bmin, bmax = float(bm.min()), float(bm.max())
-          bm_norm = (
-              (bm - bmin) / (bmax - bmin + 1e-12)
-              if bmax > bmin
-              else _np_local.zeros_like(bm)
-          )
-  
-          q_vec = self._st.encode(
-              [q], normalize_embeddings=True, show_progress_bar=False
-          )[0]
-          cand_texts = [self.nodes[i].get("text", "") for i in cand_idx]
-          C = self._st.encode(
-              cand_texts,
-              normalize_embeddings=True,
-              batch_size=64,
-              show_progress_bar=False,
-          )
-          dense = (C @ q_vec)
-          dense = (dense + 1.0) / 2.0  # → [0,1]
-  
-          final = 0.7 * bm_norm + 0.3 * dense
-          order = _np_local.argsort(-final)
-          ranked = [cand_idx[int(i)] for i in order[:top_k]]
-          scores = [float(final[int(i)]) for i in order[:top_k]]
-          return self._package_hits(ranked, query=q, scores=scores)
-  
-      # No ST model → return BM25 top-k
-      top_for_k = _np_local.argsort(-arr)[:top_k]
-      ranked = [int(i) for i in top_for_k if arr[int(i)] > 0]
-  
-      return self._package_hits(ranked, query=q, scores=None)
+        """
+        Exact-match first; BM25 fallback; optional semantic re-rank on fallback.
+        Never applies a hard similarity floor. Returns up to top_k results.
+        """
+        q = (query or "").strip()
+        if not q:
+            return []
+
+        strong = _strong_tokens(q)
+        # STEP 1: Exact substring filter (case-insensitive) if strong tokens exist.
+        if strong:
+            lower_tokens = [t.lower() for t in strong]
+            exact_hits: List[Tuple[int, int]] = []  # (node_idx, matched_count)
+
+            for i, txt_low in enumerate(self._texts_lower):
+                m = sum(1 for tok in lower_tokens if tok in txt_low)
+                if m > 0:
+                    exact_hits.append((i, m))
+
+            if exact_hits:
+                # Sort: more token matches first, then shorter text
+                exact_hits.sort(key=lambda x: (-x[1], len(self.nodes[x[0]].get("text", ""))))
+                return self._package_hits([idx for idx, _m in exact_hits[:top_k]], query=q, scores=None)
+
+        # STEP 2: BM25 fallback
+        if self._bm25 is None:
+            # No BM25 installed; do a trivial keyword scan as last resort.
+            toks = _tokenize_legal(q)
+            if not toks:
+                return []
+            scored: List[Tuple[int, int]] = []  # (node_idx, matches)
+            for i, txt_low in enumerate(self._texts_lower):
+                m = sum(1 for tok in toks if tok in txt_low)
+                if m > 0:
+                    scored.append((i, m))
+            if not scored:
+                return []
+            scored.sort(key=lambda x: (-x[1], len(self.nodes[x[0]].get("text", ""))))
+            return self._package_hits([i for i, _m in scored[:top_k]], query=q, scores=None)
+
+        # Proper BM25
+        q_tokens = _tokenize_legal(q)
+        bm25_scores = self._bm25.get_scores(q_tokens)
+        # Pick top-N candidates (cap to keep semantic re-rank fast)
+        import numpy as _np_local  # lightweight local import
+        arr = _np_local.asarray(bm25_scores)
+        if arr.size == 0:
+            return []
+        # Select top 50 indices (or fewer)
+        N = min(50, max(top_k * 4, 20))
+        top_idx = _np_local.argsort(-arr)[:N]
+        cand_idx = [int(i) for i in top_idx if arr[int(i)] > 0]
+        if not cand_idx:
+            return []
+
+        # Optional semantic re-ranking on candidates
+        if self._st is not None and len(cand_idx) > 1:
+            # Normalize BM25 to 0..1
+            bm = arr[cand_idx]
+            bmin, bmax = float(bm.min()), float(bm.max())
+            bm_norm = (bm - bmin) / (bmax - bmin + 1e-12) if bmax > bmin else _np_local.zeros_like(bm)
+
+            # Compute dense similarity for candidates
+            q_vec = self._st.encode([q], normalize_embeddings=True, show_progress_bar=False)[0]
+            cand_texts = [self.nodes[i].get("text", "") for i in cand_idx]
+            C = self._st.encode(cand_texts, normalize_embeddings=True, batch_size=64, show_progress_bar=False)
+            dense = (C @ q_vec)  # cosine in [-1,1]
+            dense = (dense + 1.0) / 2.0  # -> [0,1]
+
+            # Blend with a simple fixed weight (lexical-first)
+            final = 0.7 * bm_norm + 0.3 * dense
+            order = _np_local.argsort(-final)
+            ranked = [cand_idx[int(i)] for i in order[:top_k]]
+            # Pass blended scores back (optional)
+            scores = [float(final[int(i)]) for i in order[:top_k]]
+            return self._package_hits(ranked, query=q, scores=scores)
+
+        # No semantic model -> return BM25 top-K
+        # Note: sort BM25 top indices by score (descending) and limit to top_k
+        top_for_k = _np_local.argsort(-arr)[:top_k]
+        ranked = [int(i) for i in top_for_k if arr[int(i)] > 0]
+        return self._package_hits(ranked, query=q, scores=None)
 
     # ----------------------------- packaging -----------------------------
 
