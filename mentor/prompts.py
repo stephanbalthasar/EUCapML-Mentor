@@ -80,8 +80,7 @@ def build_plan_messages(case_text: str,
         )
     task = (
         "TASK: Draft a plan the student can follow under time pressure:\n"
-        "• Order issues logically (IRAC‑friendly labels: Issue → Rule/Standard → Application → Mini‑conclusion).\n"
-        "• Write one short clause per bullet about the expected conclusion.\n"
+        "• Order issues logically (IRAC‑friendly labels: Issue → Rule/Standard → Application).\n"
         "• End with a 1‑line Exam Tip."
     )
     user = "\n\n".join(blocks) + "\n\n" + task
