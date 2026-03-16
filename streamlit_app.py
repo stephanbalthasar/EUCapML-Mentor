@@ -405,6 +405,14 @@ render_brand_bar_aligned(
 # --- Build retrievers once ---
 para_retriever = ParagraphRetriever(INDEX["paragraphs"])
 
+from mentor.engines.router import SimpleRouter
+
+router = SimpleRouter(
+    gazetteers=para_retriever.gaz,
+    alias_bi=para_retriever.alias_bi,
+    min_hits=2
+)
+
 # --- LLM client ---
 llm_api_key = st.secrets.get("GROQ_API_KEY")
 if not llm_api_key:
@@ -648,24 +656,37 @@ with tab_feedback:
 # --- General Chat (conversation mode + booklet grounding) ---
 with tab_chat:
     def on_ask_tutor(user_q: str, history: List[Dict[str, Any]]) -> str:
-    # Optional: log student usage (unchanged)
+        # Optional logging (unchanged)
         if st.session_state.get("role") == "student":
             update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "CHAT", "student"])
+    
+        # ---- NEW: simple routing ----
+        route = router.route(user_q)
+    
         try:
+            if route == "chit_chat":
+                # Conversational mode → pure LLM, no retrieval
+                return chat_engine.answer_open(
+                    user_q,
+                    model=model,
+                    temperature=temp,
+                    max_tokens=700
+                )
+    
+            # Legal mode → your existing retrieval-grounded path
             return chat_engine.answer(
-                user_q,               # raw question only
+                user_q,
                 model=model,
                 temperature=temp,
                 max_tokens=700
             )
+    
         except Exception as e:
             msg = str(e)
             if "rate" in msg.lower() or "429" in msg:
-                return (
-                    "⏳ We’re hitting the provider’s rate limit right now. "
-                    "Please wait ~10–20 seconds and ask again."
-                )
-            return "Sorry—there was a temporary issue. Please try again in a few seconds."
+                return "⏳ Rate limit — please wait a moment and retry."
+            return "Sorry — temporary issue. Try again shortly."
+    
     
     # 👉 This call actually renders the chat UI inside the tab
     render_conversation(
