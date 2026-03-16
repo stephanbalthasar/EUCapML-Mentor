@@ -113,15 +113,11 @@ def build_tutor_messages(*,
     The engine is responsible for retrieval and passes content here.
     """
     system = (
-      "If the USER QUERY contains no legal content (no legal terms, no MAR/WpHG/Prospekt etc., "
-      "no §/Art./Article numbers, no case names, no financial facts, no scenario), "
-      "then DO NOT give any legal explanation. Instead, give a brief, friendly greeting‑style reply "
-      "and ask the user to state their legal question. "
-      "You are a helpful EU/German capital markets law tutor. "
-      "Use the provided booklet excerpts and (optionally) web snippets. "
-      "If unsure, say what is known and avoid fabricating structural references or case law. "
-      "If no context is provided, refuse to reply and ask for more information."
-  )
+        "You are a helpful EU/German capital markets law tutor. "
+        "Use the provided booklet excerpts and (optionally) web snippets. "
+        "If unsure, say what is known and avoid fabricating structural references or case law."
+        "If no context is provided, refuse to reply and ask for more information."
+    )
 
     booklet_block = "\n\n".join(f"- {c}" for c in (booklet_chunks or [])[:15]) or "None"
     web_block = "\n\n".join(f"- {s}" for s in (web_snippets or [])[:4]) or "None"
