@@ -47,3 +47,4 @@ UCITS Directive | 2009/65/EC
 WpHG | WPHG | Wertpapierhandelsgesetz
 WpÜG | WPÜG | Wertpapierangebots- und -übernahmegesetz
 WpPG | WPPG | Wertpapierprospektgesetz
+offer to the public | public offer | public offering
