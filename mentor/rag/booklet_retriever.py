@@ -1,314 +1,346 @@
 # -*- coding: utf-8 -*-
 """
-Minimal legal retriever (Option B):
-1) Extract "strong tokens" from the user query (e.g., Lafonta, MAR, Art. 7(1), C-628/13).
-2) Exact substring filter (case-insensitive). If any hits -> return top-K by (#matches, shorter text).
-3) Otherwise fall back to BM25 over the booklet JSONL.
-4) If BM25 was used, optionally re-rank top candidates with a Sentence-Transformers model (CPU).
-5) No hard similarity floor; never silently return zero if there are literal matches.
+Single-file booklet retriever (TXT gazetteers + JSONL booklet, standard-library only).
 
-Source of truth: ONLY the remote JSONL configured via BOOKLET_REPO/REF/PATH.
-No local fallback. If the JSONL cannot be fetched, we fail fast with a clear error.
+Pipeline
+--------
+(1) Load gazetteers (TXT) and booklet (JSONL) from GitHub Contents API using REPO_XPAT.
+(2) Extract legal signals from query:
+      - regex for sections (e.g., "§ 33", "§ 33 Abs. 1"),
+      - regex for articles (e.g., "Art. 7(1)"),
+      - regex for case numbers (EU/EFTA/DE dockets, e.g., "C-628/13", "E-1/10", "II ZR 9/21"),
+      - lookups against gazetteer_concepts.txt and gazetteer_cases.txt with conservative fuzzy snapping,
+      - alias expansion from gazetteer_aliases.txt + auto-links learned from the corpus (name <-> number).
+(3) Match against local corpus paragraphs and score:
+      - exact hits on structured signals and gazetteer/alias terms (high weight),
+      - fuzzy hits for non-snapped tokens (discounted),
+      - small co-occurrence bonus (case name + number in the same paragraph),
+      - return top 6 with score >= 1.0.
 
-Expected to be constructed as ParagraphRetriever(...), and used via .search(query, top_k,...)
-to stay compatible with your ChatEngine (it prefers .search if present).
+Outputs
+-------
+Returns a list[dict] of hits shaped like the legacy code:
+  {
+    "text": str,
+    "score": float | None,     # here it is a float; None if unavailable
+    "rank": int,
+    "node_id": any,
+    "doc_id": any,
+    "type": any,
+    "anchor": any,
+    "breadcrumb": any,         # if the JSONL uses "breadcrumbs", we pass that through here
+    "lang": any,
+    "links": dict | any,
+  }
 
-Environment / Streamlit secrets:
-  BOOKLET_REPO  -> e.g. "stephanbalthasar/EUCapML-Mentor-Content"
-  BOOKLET_REF   -> e.g. "main"
-  BOOKLET_PATH  -> e.g. "artifacts/booklet_index.jsonl"
-  (optional token priority: GITHUB_TOKEN -> REPO_XPAT -> BOOKLET_TOKEN)
+Configuration (env)
+-------------------
+REPO_XPAT      : GitHub token (Fine-grained PAT) for private repo read.
+BOOKLET_REPO   : optional override; default "stephanbalthasar/b2-eucapml-content"
+BOOKLET_REF    : optional override; default "main"
+GAZ_BASE       : optional override; default "assets"
+BOOKLET_PATH   : optional override; default "artifacts/booklet_index.jsonl"
 
-Optional knobs (env/secrets):
-  BOOKLET_DEVICE = "cpu" (default)  # for SentenceTransformer
+Author: M365 Copilot for Stephan Balthasar
 """
 
 from __future__ import annotations
 
-import io
+import json
 import os
 import re
-import json
-from typing import List, Dict, Optional, Tuple
+import time
+import html
+from typing import Dict, List, Optional, Tuple, Set, Iterable
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
+import difflib
 
-import requests
+# ----------------------------- Config & constants -----------------------------
 
-# Optional libraries; degrade gracefully.
-try:
-    from rank_bm25 import BM25Okapi
-    _HAS_BM25 = True
-except Exception:
-    _HAS_BM25 = False
+_DEFAULT_REPO = os.getenv("BOOKLET_REPO", "stephanbalthasar/b2-eucapml-content")
+_DEFAULT_REF = os.getenv("BOOKLET_REF", "main")
+_ASSETS_BASE = os.getenv("GAZ_BASE", "assets")
+_BOOKLET_PATH = os.getenv("BOOKLET_PATH", "artifacts/booklet_index.jsonl")
 
-try:
-    from sentence_transformers import SentenceTransformer
-    import numpy as _np
-    _HAS_ST = True
-except Exception:
-    _HAS_ST = False
-    _np = None  # type: ignore
+_GZ_CONCEPTS = f"{_ASSETS_BASE}/gazetteer_concepts.txt"
+_GZ_CASES = f"{_ASSETS_BASE}/gazetteer_cases.txt"
+_GZ_ALIASES = f"{_ASSETS_BASE}/gazetteer_aliases.txt"
 
-# Streamlit secrets are convenient, but we also accept pure env.
-try:
-    import streamlit as st  # noqa
-except Exception:
-    st = None
+_GITHUB_API_TMPL = "https://api.github.com/repos/{repo}/contents/{path}?ref={ref}"
+_GITHUB_RAW_TMPL = "https://raw.githubusercontent.com/{repo}/{ref}/{path}"
+
+# Fuzzy thresholds (conservative, tuned for legal acronyms/names)
+_SHORT_SNAP = 0.92  # short tokens (<=6 chars): require high similarity
+_LONG_SNAP = 0.85   # longer names: allow slightly lower but still strict
+_SNAP_MARGIN = 0.05 # uniqueness margin vs 2nd best
+_FUZZY_ACCEPT = 0.82  # stage (2) fuzzy acceptance threshold
+
+# Scoring weights (simple & transparent)
+W_STRUCTURED = 3.0      # §§, Art., docket numbers
+W_GAZ_EXACT = 2.5       # exact match of canonical or alias
+W_FUZZY = 0.6           # multiplier applied to similarity (0..1)
+W_COOCCUR = 0.4         # bonus if case name & number co-occur in node
 
 
-# ------------------------------- small helpers -------------------------------
+# ----------------------------- Utility: HTTP fetch ----------------------------
 
-# Keep letters, digits, and legal punctuation used in citations (§, (), /, -).
-# This tokenizer is used for BM25; it's intentionally simple and robust.
-_TOKEN_RE = re.compile(r"[A-Za-zÄÖÜäöüß]+(?:[()\-/§\d]*[A-Za-zÄÖÜäöüß\d]*)*|\d+[()\-/\d]*", re.UNICODE)
+def _get_token() -> Optional[str]:
+    # Token from environment/secrets; name agreed: REPO_XPAT
+    return os.getenv("REPO_XPAT")
 
-# Very lightweight stopwords to remove conversational fluff; legal abbreviations remain.
-_STOP_EN = {"the", "a", "an", "and", "or", "but", "of", "in", "on", "for", "to", "is", "are", "was", "were", "be", "been", "can", "could", "would", "should", "with", "as", "by", "at", "from", "that", "this", "it", "about", "there", "anything", "tell", "me"}
-_STOP_DE = {"der", "die", "das", "und", "oder", "aber", "mit", "ohne", "auf", "aus", "bei", "durch", "gegen", "unter", "vom", "zur", "zum", "gemäß", "ist", "sind", "war", "waren"}
-
-def _secret_or_env(key: str) -> Optional[str]:
-    if st is not None:
+def _http_get(url: str, headers: Dict[str, str], retries: int = 3, backoff: float = 0.75) -> Tuple[int, bytes]:
+    last_exc = None
+    for attempt in range(retries):
         try:
-            val = st.secrets.get(key)
-            if val:
-                return str(val)
+            req = Request(url, headers=headers)
+            with urlopen(req, timeout=30) as resp:
+                return resp.getcode(), resp.read()
+        except HTTPError as e:
+            code = getattr(e, "code", 0) or 0
+            # retry on transient statuses
+            if code in (429, 500, 502, 503, 504):
+                time.sleep(backoff * (2 ** attempt))
+                continue
+            return code, getattr(e, "read", lambda: b"")()
+        except URLError as e:
+            last_exc = e
+            time.sleep(backoff * (2 ** attempt))
+            continue
+    if last_exc:
+        raise last_exc
+    return 0, b""
+
+def _fetch_text_from_github(repo: str, ref: str, path: str, token: Optional[str]) -> str:
+    """
+    Fetch raw file content from GitHub. Use Contents API if token is present; fall back to raw.
+    """
+    if token:
+        api = _GITHUB_API_TMPL.format(repo=repo, path=path, ref=ref)
+        code, data = _http_get(api, {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github.v3.raw",
+            "User-Agent": "booklet-retriever"
+        })
+        if code == 200:
+            return data.decode("utf-8", errors="replace")
+        # If API fails, try raw as a fallback (in case repo is public or token scopes differ)
+    raw = _GITHUB_RAW_TMPL.format(repo=repo, ref=ref, path=path)
+    code, data = _http_get(raw, {
+        "User-Agent": "booklet-retriever"
+    })
+    if code != 200:
+        raise RuntimeError(f"Failed to fetch {path} (HTTP {code}).")
+    return data.decode("utf-8", errors="replace")
+
+
+# ----------------------------- Parsing helpers -------------------------------
+
+_HYPHEN_MAP = dict.fromkeys(map(ord, "\u2010\u2011\u2012\u2013\u2014\u2015\u2212"), ord("-"))
+
+def _norm_ws_hyphen(s: str) -> str:
+    # unify hyphens/dashes; collapse whitespace; strip trailing comma/semicolon
+    s = (s or "").translate(_HYPHEN_MAP)
+    s = re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"[;,]\s*$", "", s)
+    return s
+
+def _parse_list(txt: str) -> List[str]:
+    out: List[str] = []
+    for line in txt.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        out.append(_norm_ws_hyphen(s))
+    return out
+
+def _parse_aliases(txt: str) -> Dict[str, Set[str]]:
+    """
+    Each line: Canonical | alias1 | alias2 | ...
+    Returns canonical -> set(aliases). (We add reverse mapping at runtime.)
+    """
+    mapping: Dict[str, Set[str]] = {}
+    for raw in txt.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        # split by '|' and normalize each part
+        parts = [_norm_ws_hyphen(p) for p in line.split("|")]
+        parts = [p for p in parts if p]
+        if not parts:
+            continue
+        canon, aliases = parts[0], parts[1:]
+        s = mapping.setdefault(canon, set())
+        for a in aliases:
+            if a and a != canon:
+                s.add(a)
+    return mapping
+
+
+# ----------------------------- Corpus loader ---------------------------------
+
+def _load_corpus(repo: str, ref: str, booklet_path: str, token: Optional[str]) -> List[Dict]:
+    """
+    Load JSONL booklet. Each line is a JSON object; we require at least a "text" field.
+    We pass through any other fields (node_id, doc_id, type, anchor, breadcrumb(s), lang, links).
+    """
+    txt = _fetch_text_from_github(repo, ref, booklet_path, token)
+    nodes: List[Dict] = []
+    for i, line in enumerate(txt.splitlines()):
+        s = line.strip()
+        if not s:
+            continue
+        try:
+            obj = json.loads(s)
         except Exception:
-            pass
-    return os.getenv(key)
-
-def _build_raw_url_from_secrets() -> Tuple[str, Optional[str]]:
-    repo = _secret_or_env("BOOKLET_REPO")
-    ref  = _secret_or_env("BOOKLET_REF")
-    path = _secret_or_env("BOOKLET_PATH")
-    if not (repo and ref and path):
-        raise RuntimeError("Booklet retriever misconfigured: set BOOKLET_REPO, BOOKLET_REF, BOOKLET_PATH.")
-    raw_url = f"https://raw.githubusercontent.com/{repo}/{ref}/{path}"
-    token = (_secret_or_env("GITHUB_TOKEN")
-             or _secret_or_env("REPO_XPAT")
-             or _secret_or_env("BOOKLET_TOKEN"))
-    return raw_url, token
-
-def _fetch_jsonl(raw_url: str, token: Optional[str]) -> str:
-    headers = {"Authorization": f"token {token}"} if token else {}
-    r = requests.get(raw_url, headers=headers, timeout=30)
-    if r.status_code != 200:
-        raise RuntimeError(f"Failed to fetch booklet JSONL (HTTP {r.status_code}).")
-    return r.text
-
-def _tokenize_legal(text: str, lang_hint: Optional[str] = None) -> List[str]:
-    s = (text or "").lower()
-    toks = [t for t in _TOKEN_RE.findall(s) if t]
-    if lang_hint == "de":
-        return [t for t in toks if t not in _STOP_DE]
-    if lang_hint == "en":
-        return [t for t in toks if t not in _STOP_EN]
-    # No reliable lang detection needed; queries are short. Apply both lists lightly.
-    return [t for t in toks if t not in _STOP_EN and t not in _STOP_DE]
-
-def _strong_tokens(query: str) -> List[str]:
-    """
-    Extract "strong tokens":
-      - capitalized tokens not at sentence start (simple heuristic),
-      - ALL-CAPS abbreviations (e.g., MAR, ECJ),
-      - tokens containing digits or legal punctuation: (), /, -, § (e.g., 7(1), C-628/13, §15),
-    We keep them as raw substrings and use case-insensitive substring search.
-    """
-    q = query.strip()
-    if not q:
-        return []
-    # Split on whitespace, keep punctuation within tokens (for citations).
-    rough = re.findall(r"[^\s]+", q)
-    strong: List[str] = []
-
-    # Heuristics
-    for i, tok in enumerate(rough):
-        # Normalize fancy hyphens
-        t = tok.replace("‑", "-").replace("–", "-").strip(".,;:!?()[]{}\"'“”‘’")
+            continue
+        t = (obj.get("text") or "").strip()
         if not t:
             continue
-        # ALL-CAPS legal abbreviations (length >= 2)
-        if re.fullmatch(r"[A-ZÄÖÜ]{2,}", t):
-            strong.append(t)
-            continue
-        # Contains digits or legal punctuation -> likely a citation
-        if re.search(r"[0-9§()/\-]", t):
-            strong.append(t)
-            continue
-        # Capitalized non-initial proper noun (very light heuristic)
-        if i > 0 and re.fullmatch(r"[A-ZÄÖÜ][a-zäöüß]+", t):
-            strong.append(t)
-            continue
+        nodes.append(obj)
+    if not nodes:
+        raise RuntimeError("Booklet JSONL loaded but contained no usable nodes.")
+    return nodes
 
-    # Deduplicate, preserve order
-    seen = set()
-    out = []
-    for t in strong:
-        key = t.lower()
-        if key not in seen:
-            seen.add(key)
-            out.append(t)
+
+# ----------------------------- Gazetteer loader ------------------------------
+
+class Gazetteers:
+    def __init__(self,
+                 concepts: List[str],
+                 cases: List[str],
+                 alias_map: Dict[str, Set[str]]):
+        # store original casing; build lowercase indices for lookups
+        self.concepts = concepts
+        self.cases = cases
+        self.alias_map = alias_map
+
+        self._concepts_lc = {c.lower(): c for c in concepts}
+        self._cases_lc = {c.lower(): c for c in cases}
+
+        # Build reverse alias links (two-way) in memory (lossless)
+        bi: Dict[str, Set[str]] = {}
+        for canon, alset in alias_map.items():
+            cset = bi.setdefault(canon, set())
+            for a in alset:
+                cset.add(a)
+                bi.setdefault(a, set()).add(canon)
+        self.alias_bi = bi
+
+
+def _load_gazetteers(repo: str, ref: str, token: Optional[str]) -> Gazetteers:
+    txt_concepts = _fetch_text_from_github(repo, ref, _GZ_CONCEPTS, token)
+    txt_cases = _fetch_text_from_github(repo, ref, _GZ_CASES, token)
+    txt_aliases = _fetch_text_from_github(repo, ref, _GZ_ALIASES, token)
+
+    concepts = _dedup_preserve(_parse_list(txt_concepts))
+    cases = _dedup_preserve(_parse_list(txt_cases))
+    alias_map = _parse_aliases(txt_aliases)
+    return Gazetteers(concepts, cases, alias_map)
+
+def _dedup_preserve(items: Iterable[str]) -> List[str]:
+    seen: Set[str] = set()
+    out: List[str] = []
+    for x in items:
+        xl = x.lower()
+        if xl not in seen:
+            seen.add(xl)
+            out.append(x)
     return out
 
 
-# ----------------------------- main retriever class -----------------------------
+# ----------------------------- Signal extraction -----------------------------
 
-class ParagraphRetriever:
+# Structured patterns
+RE_SECTION = re.compile(r"§\s*\d+[a-z]?(?:\s*(?:Abs\.?|Satz)\s*\d+)*", re.IGNORECASE)
+RE_ARTICLE = re.compile(r"(?:Art\.?|Artikel)\s*\d+[a-z]?(?:\(\d+\))*", re.IGNORECASE)
+RE_DOCKET = re.compile(
+    r"\b(?:[CTF]-\d+/\d{2}|E-\d+/\d{2}|[IVX]+\s+Z[RB]\s+\d+/\d{2})\b",
+    re.IGNORECASE
+)
+
+def _difflib_best(token: str, candidates: List[str]) -> Tuple[Optional[str], float, float]:
     """
-    Minimal, deterministic retriever for your booklet JSONL.
-
-    Usage:
-        r = ParagraphRetriever(paragraphs_ignored)
-        hits = r.search("ECJ decision in Lafonta", top_k=8)
-
-    Returns: list[dict] with keys: text, score, rank, node_id, doc_id, type, anchor, breadcrumb, lang
+    Return (best_candidate, score, margin_to_second).
+    Score is difflib ratio (0..1), case-insensitive.
     """
+    if not token or not candidates:
+        return None, 0.0, 0.0
+    t = token.lower()
+    lows = [c.lower() for c in candidates]
+    scored = [(candidates[i], difflib.SequenceMatcher(None, t, lows[i]).ratio())
+              for i in range(len(candidates))]
+    scored.sort(key=lambda x: x[1], reverse=True)
+    best, s1 = scored[0]
+    s2 = scored[1][1] if len(scored) > 1 else 0.0
+    return best, s1, (s1 - s2)
 
-    def __init__(self, _paragraphs_ignored=None):
-        # Load JSONL from remote only (explicit). No local fallback.
-        raw_url, token = _build_raw_url_from_secrets()
-        text = _fetch_jsonl(raw_url, token)
+def _should_snap(token: str, score: float, margin: float) -> bool:
+    cutoff = _SHORT_SNAP if len(_strip_nonword(token)) <= 6 else _LONG_SNAP
+    return (score >= cutoff) and (margin >= _SNAP_MARGIN)
 
-        self.nodes: List[Dict] = []
-        self._texts_lower: List[str] = []
+def _strip_nonword(s: str) -> str:
+    return re.sub(r"\W+", "", s or "")
 
-        for line in io.StringIO(text):
-            s = line.strip()
-            if not s:
-                continue
-            try:
-                d = json.loads(s)
-            except Exception:
-                continue
-            t = (d.get("text") or "").strip()
-            if not t:
-                continue
-            # Accept all types that carry content; you can narrow if needed.
-            dtype = d.get("type", "paragraph")
-            if dtype not in {"paragraph", "case_note", "footnote", "heading"}:
-                continue
-            self.nodes.append(d)
-            self._texts_lower.append(t.lower())
+def _wordish_tokens(q: str) -> List[str]:
+    # Keep tokens; preserve hyphenated words; drop surrounding punctuation
+    # We still keep 'C-628/13' as a single token
+    q = _norm_ws_hyphen(q)
+    toks = re.findall(r"[A-Za-zÄÖÜäöüß0-9\-\/]+", q)
+    return [t for t in toks if t]
 
-        if not self.nodes:
-            raise RuntimeError("Booklet JSONL loaded but contained no usable nodes.")
+def _expand_aliases(seed: Set[str], alias_bi: Dict[str, Set[str]]) -> Set[str]:
+    out = set(seed)
+    for s in list(seed):
+        for a in alias_bi.get(s, ()):
+            out.add(a)
+    return out
 
-        # Build BM25 index if library is available.
-        self._bm25 = None
-        if _HAS_BM25:
-            corpus_tokens = [_tokenize_legal(n.get("text", "")) for n in self.nodes]
-            self._bm25 = BM25Okapi(corpus_tokens)
+def extract_signals(query: str, gaz: Gazetteers, corpus_auto_alias: Dict[str, Set[str]]) -> List[Dict]:
+    """
+    Returns a list of signals. Each signal:
+      {
+        "type": "section"|"article"|"case_no"|"concept"|"case_name"|"other",
+        "surface": ...,
+        "canonical": ...,
+        "confidence": float (0..1),
+        "expanded": set[str],       # canonical plus aliases (bi-directional)
+        "fuzzy_eligible": bool,
+      }
+    """
+    q = _norm_ws_hyphen(query or "")
+    if not q:
+        return []
 
-        # Optional Sentence-Transformers model for semantic re-ranking
-        self._st = None
-        if _HAS_ST:
-            device = _secret_or_env("BOOKLET_DEVICE") or "cpu"
-            try:
-                self._st = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device=device)
-            except Exception:
-                self._st = None  # run lexical-only if it fails
+    signals: List[Dict] = []
 
-    # ----------------------------- public API -----------------------------
+    # 1) Structured from regex
+    for m in RE_SECTION.finditer(q):
+        s = m.group(0)
+        signals.append(dict(type="section", surface=s, canonical=s, confidence=1.0,
+                            expanded=set([s]), fuzzy_eligible=False))
+    for m in RE_ARTICLE.finditer(q):
+        s = m.group(0)
+        signals.append(dict(type="article", surface=s, canonical=s, confidence=1.0,
+                            expanded=set([s]), fuzzy_eligible=False))
+    for m in RE_DOCKET.finditer(q):
+        s = m.group(0)
+        signals.append(dict(type="case_no", surface=s, canonical=s, confidence=1.0,
+                            expanded=set([s]), fuzzy_eligible=False))
 
-    def search(self, query: str, top_k: int = 8, **_kwargs) -> List[Dict]:
-        """
-        Exact-match first; BM25 fallback; optional semantic re-rank on fallback.
-        Never applies a hard similarity floor. Returns up to top_k results.
-        """
-        q = (query or "").strip()
-        if not q:
-            return []
+    # 2) Gazetteer lookups with conservative snapping
+    surface_tokens = _wordish_tokens(q)
+    # For matching, prefer longer tokens first to avoid snapping tiny words
+    surface_tokens.sort(key=lambda x: (-len(_strip_nonword(x)), x.lower()))
 
-        strong = _strong_tokens(q)
-        # STEP 1: Exact substring filter (case-insensitive) if strong tokens exist.
-        if strong:
-            lower_tokens = [t.lower() for t in strong]
-            exact_hits: List[Tuple[int, int]] = []  # (node_idx, matched_count)
+    # Lowercased lookup tables
+    concepts = gaz.concepts
+    cases = gaz.cases
 
-            for i, txt_low in enumerate(self._texts_lower):
-                m = sum(1 for tok in lower_tokens if tok in txt_low)
-                if m > 0:
-                    exact_hits.append((i, m))
+    for tok in surface_tokens:
+        tl = tok.lower()
 
-            if exact_hits:
-                # Sort: more token matches first, then shorter text
-                exact_hits.sort(key=lambda x: (-x[1], len(self.nodes[x[0]].get("text", ""))))
-                return self._package_hits([idx for idx, _m in exact_hits[:top_k]], query=q, scores=None)
+        # Skip if already captured as structured docket/section/article
+        if RE_SECTION.fullmatch(tok) or RE_ARTICLE.fullmatch(tok) or RE_DOCKET.fullmatch(tok):
+            continue
 
-        # STEP 2: BM25 fallback
-        if self._bm25 is None:
-            # No BM25 installed; do a trivial keyword scan as last resort.
-            toks = _tokenize_legal(q)
-            if not toks:
-                return []
-            scored: List[Tuple[int, int]] = []  # (node_idx, matches)
-            for i, txt_low in enumerate(self._texts_lower):
-                m = sum(1 for tok in toks if tok in txt_low)
-                if m > 0:
-                    scored.append((i, m))
-            if not scored:
-                return []
-            scored.sort(key=lambda x: (-x[1], len(self.nodes[x[0]].get("text", ""))))
-            return self._package_hits([i for i, _m in scored[:top_k]], query=q, scores=None)
-
-        # Proper BM25
-        q_tokens = _tokenize_legal(q)
-        bm25_scores = self._bm25.get_scores(q_tokens)
-        # Pick top-N candidates (cap to keep semantic re-rank fast)
-        import numpy as _np_local  # lightweight local import
-        arr = _np_local.asarray(bm25_scores)
-        if arr.size == 0:
-            return []
-        # Select top 50 indices (or fewer)
-        N = min(50, max(top_k * 4, 20))
-        top_idx = _np_local.argsort(-arr)[:N]
-        cand_idx = [int(i) for i in top_idx if arr[int(i)] > 0]
-        if not cand_idx:
-            return []
-
-        # Optional semantic re-ranking on candidates
-        if self._st is not None and len(cand_idx) > 1:
-            # Normalize BM25 to 0..1
-            bm = arr[cand_idx]
-            bmin, bmax = float(bm.min()), float(bm.max())
-            bm_norm = (bm - bmin) / (bmax - bmin + 1e-12) if bmax > bmin else _np_local.zeros_like(bm)
-
-            # Compute dense similarity for candidates
-            q_vec = self._st.encode([q], normalize_embeddings=True, show_progress_bar=False)[0]
-            cand_texts = [self.nodes[i].get("text", "") for i in cand_idx]
-            C = self._st.encode(cand_texts, normalize_embeddings=True, batch_size=64, show_progress_bar=False)
-            dense = (C @ q_vec)  # cosine in [-1,1]
-            dense = (dense + 1.0) / 2.0  # -> [0,1]
-
-            # Blend with a simple fixed weight (lexical-first)
-            final = 0.7 * bm_norm + 0.3 * dense
-            order = _np_local.argsort(-final)
-            ranked = [cand_idx[int(i)] for i in order[:top_k]]
-            # Pass blended scores back (optional)
-            scores = [float(final[int(i)]) for i in order[:top_k]]
-            return self._package_hits(ranked, query=q, scores=scores)
-
-        # No semantic model -> return BM25 top-K
-        # Note: sort BM25 top indices by score (descending) and limit to top_k
-        top_for_k = _np_local.argsort(-arr)[:top_k]
-        ranked = [int(i) for i in top_for_k if arr[int(i)] > 0]
-        return self._package_hits(ranked, query=q, scores=None)
-
-    # ----------------------------- packaging -----------------------------
-
-    def _package_hits(self, indices: List[int], query: str, scores: Optional[List[float]]) -> List[Dict]:
-        out: List[Dict] = []
-        for rank, i in enumerate(indices, start=1):
-            n = self.nodes[i]
-            item = {
-                "text": n.get("text", ""),
-                "score": (scores[rank - 1] if scores and rank - 1 < len(scores) else None),
-                "rank": rank,
-                "node_id": n.get("node_id"),
-                "doc_id": n.get("doc_id"),
-                "type": n.get("type"),
-                "anchor": n.get("anchor"),
-                "breadcrumb": n.get("breadcrumb"),
-                "lang": n.get("lang", None),
-                "links": n.get("links", {}),
-            }
-            out.append(item)
-        return out
