@@ -526,6 +526,22 @@ def extract_signals(query: str, gaz: Gazetteers, corpus_auto_alias: Dict[str, Se
                         fuzzy_eligible=False
                     ))
                     break  # go to next tok
+        # --- multi-word canonical matching for CASE NAMES (Step 2) ---
+        for canon in gaz.cases:
+            canon_norm = canon.lower()
+            canon_words = canon_norm.split()
+            if len(canon_words) > 1:
+                # all canonical words must be present as tokens (case-insensitive)
+                if all(w in token_set_lc for w in canon_words):
+                    signals.append(dict(
+                        type="case_name",
+                        surface=tok,            # keep surface minimal; canonical carries the phrase
+                        canonical=canon_norm,   # e.g., "spector photo"
+                        confidence=1.0,
+                        expanded={canon_norm},
+                        fuzzy_eligible=False
+                    ))
+                    break  # go to next tok
         
         best, score, margin = _difflib_best(tok, gaz.concepts)
         if best and _should_snap(tok, score, margin):
