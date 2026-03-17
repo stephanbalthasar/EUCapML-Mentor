@@ -1,120 +1,46 @@
-# app/router.py
-# -----------------------------------------------------------------------------
-# FIX #1 — CANONICAL-ONLY ROUTER (final)
-# Detect concepts using ONLY canonical case names + canonical concepts.
-# Aliases are ignored. One hit per canonical. Safe fuzzy typo-handling.
-# -----------------------------------------------------------------------------
+# app/router2.py
 
 from __future__ import annotations
-import os
-import unicodedata
-import difflib
-from typing import List, Dict
+from typing import Dict, Any, List
+
+# Import the retriever and its signal extractor
+from mentor.rag.booklet_retriever import extract_signals, Gazetteers, build_corpus_auto_alias
+from mentor.rag.booklet_retriever import ParagraphRetriever  # only used to load gazetteers & corpus
+
+# You only need ONE global retriever instance to access gazetteers + alias maps
+# This avoids reloading files for every query.
+_retriever = ParagraphRetriever()   # loads gazetteers, booklet corpus, auto-aliases
+_gaz = _retriever.gaz
+_auto_alias = _retriever.alias_bi   # merged alias map (gazetteers + auto-aliases)
 
 
-# -----------------------------------------------------------------------------
-# Normalization
-# -----------------------------------------------------------------------------
-_HYPHEN_MAP = dict.fromkeys(map(ord, "‑–—−—"), ord("-"))
-
-def _norm(s: str) -> str:
-    if not s:
-        return ""
-    s = unicodedata.normalize("NFKC", s)
-    s = s.translate(_HYPHEN_MAP)
-    s = s.lower()
-    return " ".join(s.split())
-
-
-_STOPWORDS = {
-    "can","you","tell","me","about","what","summarize","summarise",
-    "please","in","the","a","an","on","of","decision","explain","describe",
-    "give","provide","case"
-}
-
-
-# -----------------------------------------------------------------------------
-# Load canonical terms (concepts + cases)
-# -----------------------------------------------------------------------------
-def _read_file(path: str) -> List[str]:
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
-        return [line.strip() for line in f if line.strip() and not line.startswith("#")]
-
-def _dedup_nested_canonicals(terms: List[str]) -> List[str]:
+def route(user_query: str) -> Dict[str, Any]:
     """
-    Minimal fix:
-    - Normalize all terms
-    - Remove exact duplicates ONLY
-    - Preserve short canonicals (e.g., MAR, WpHG)
-    - Preserve multi‑word concepts (e.g., inside information)
-    """
-    seen = set()
-    deduped = []
-
-    for t in terms:
-        n = _norm(t)
-        if n and n not in seen:
-            seen.add(n)
-            deduped.append(n)
-
-    return deduped
-
-def _load_canonicals() -> List[str]:
-    base = os.path.dirname(os.path.abspath(__file__))
-    concepts  = _read_file(os.path.join(base, "..", "mentor", "rag", "gazetteer_concepts.txt"))
-    cases     = _read_file(os.path.join(base, "..", "mentor", "rag", "gazetteer_cases.txt"))
-    return _dedup_nested_canonicals(concepts + cases)
-
-
-_CANONICALS = _load_canonicals()
-
-
-# -----------------------------------------------------------------------------
-# Concept matching
-# -----------------------------------------------------------------------------
-def _canonical_matches(canon: str, q: str, q_words: List[str]) -> bool:
-    """
-    Match user query against a canonical concept:
-      - EXACT substring match → match
-      - SUBSTRING token match (token is part of canonical) → match
-      - FUZZY typo match (single-word tokens) → match
+    Signal-based router:
+    - Use extract_signals() to detect legal signals in the query.
+    - If >2 signals → RAG
+    - If exactly 2 signals AND at least one is a case_name/case_no → RAG
+    - Else → Chat mode.
     """
 
-    # Exact match
-    if canon in q:
-        return True
-
-    # Token-subset match (user token inside canonical)
-    for w in q_words:
-        if len(w) >= 5 and w not in _STOPWORDS:
-            if w in canon:
-                return True
-
-    # Fuzzy (single-word canonicals only)
-    if " " not in canon and len(canon) >= 5:
-        for w in q_words:
-            if len(w) < 5 or w in _STOPWORDS:
-                continue
-            if difflib.SequenceMatcher(None, w, canon).ratio() >= 0.88:
-                return True
-
-    return False
-
-
-# -----------------------------------------------------------------------------
-# Public router
-# -----------------------------------------------------------------------------
-def route(user_query: str, *, threshold: int = 2) -> Dict[str, int]:
-    q = _norm(user_query)
-    if not q:
+    if not user_query or not user_query.strip():
         return {"mode": "chat", "count": 0}
 
-    q_words = q.split()
+    # 1. Extract signals using the robust RAG extractor
+    signals: List[Dict[str, Any]] = extract_signals(
+        user_query,
+        gaz=_gaz,
+        corpus_auto_alias=_auto_alias,
+    )
 
-    hits = 0
-    for canon in _CANONICALS:
-        if _canonical_matches(canon, q, q_words):
-            hits += 1
+    n = len(signals)
+    has_case = any(s["type"] in ("case_name", "case_no") for s in signals)
 
-    mode = "rag" if hits >= threshold else "chat"
-    return {"mode": mode, "count": hits}
+    # 2. Routing rules
+    if n > 2:
+        return {"mode": "rag", "count": n}
+
+    if n == 2 and has_case:
+        return {"mode": "rag", "count": n}
+
+    return {"mode": "chat", "count": n}
