@@ -108,3 +108,78 @@ def _load_canonical_map() -> Dict[str, Set[str]]:
     canonical_map: Dict[str, Set[str]] = {}
 
     # Concepts (each line = one canonical)
+    for c in concepts:
+        canonical_map.setdefault(c, set()).add(c)
+
+    # Cases
+    for c in cases:
+        canonical_map.setdefault(c, set()).add(c)
+
+    # Aliases
+    for canonical, alset in alias_map.items():
+        # Merge into canonical_map
+        s = canonical_map.setdefault(canonical, set())
+        for a in alset:
+            s.add(a)
+
+    # Normalize all terms
+    out: Dict[str, Set[str]] = {}
+    for canon, alset in canonical_map.items():
+        canon_n = _norm(canon)
+        out[canon_n] = {_norm(t) for t in alset if t}
+
+    return out
+
+
+# Load canonical map at import
+_CANONICAL_MAP: Dict[str, Set[str]] = _load_canonical_map()
+
+
+# -----------------------------------------------------------------------------
+# Matching: does ANY variant of this canonical entry match the query?
+# -----------------------------------------------------------------------------
+def _canonical_matches(canon: str, variants: Set[str], q: str, q_words: List[str]) -> bool:
+    """
+    Returns True if ANY alias or the canonical term matches EXACTLY or FUZZILY.
+    - Exact: variant in query
+    - Fuzzy: difflib ratio >= 0.75 between variant and any query word
+    """
+    for v in variants:
+
+        # Exact substring match
+        if v in q:
+            return True
+
+        # Fuzzy (only for word-like aliases)
+        for w in q_words:
+            if len(w) <= 2:
+                continue
+            ratio = difflib.SequenceMatcher(None, w, v).ratio()
+            if ratio >= 0.75:
+                return True
+
+    return False
+
+
+# -----------------------------------------------------------------------------
+# PUBLIC: route()
+# -----------------------------------------------------------------------------
+def route(user_query: str, *, threshold: int = 2) -> Dict[str, int]:
+    """
+    Count how many CANONICAL gazetteer entries match the query (exact OR fuzzy).
+    If >= threshold → RAG
+    Else → Chat
+    """
+    q = _norm(user_query)
+    if not q:
+        return {"mode": "chat", "count": 0}
+
+    q_words = q.split()
+
+    hits = 0
+    for canon, variants in _CANONICAL_MAP.items():
+        if _canonical_matches(canon, variants, q, q_words):
+            hits += 1
+
+    mode = "rag" if hits >= threshold else "chat"
+    return {"mode": mode, "count": hits}
