@@ -649,26 +649,24 @@ with tab_feedback:
 with tab_chat:
 
     def on_ask_tutor(user_q: str, history: List[Dict[str, Any]]) -> str:
-
-        # Optional: your existing logging
+        # Optional: keep your student usage ping
         if st.session_state.get("role") == "student":
             update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "CHAT", "student"])
 
-        # HEURISTIC ROUTER (no LLM):
-        decision = route(user_q, para_retriever)   # para_retriever already built above
+        # Heuristic router (no LLM): counts gazetteer hits (exact or fuzzy)
+        decision = route(user_q)  # returns {"mode": "rag"|"chat", "count": int}
 
         if decision["mode"] == "rag":
-            # RAG: existing booklet-based ChatEngine
+            # RAG: existing booklet-grounded pipeline
             answer = chat_engine.answer(
                 user_query=user_q,
-                model=model,
+                model=model,           # keep your sidebar model selection
                 temperature=temp,
                 max_tokens=700
             )
             return f"_Mode: Booklet-grounded (concepts={decision['count']})_\n\n{answer}"
-
         else:
-            # Chat Mode: friendly assistant (no retrieval)
+            # Chat Mode: assistant (no retrieval)
             answer = chat_engine.assist(
                 user_query=user_q,
                 model="llama-3.1-8b-instant",
