@@ -1,23 +1,22 @@
 # app/router.py
 # -----------------------------------------------------------------------------
-# FIX #1 — STABLE CANONICAL-LEVEL ROUTER
+# FIX #1 — CANONICAL-ONLY ROUTER (stable concept counting)
 #
-# Routing rule:
-#   Count how many CANONICAL gazetteer entries match the query.
-#   - Exact match allowed
-#   - Fuzzy match allowed ONLY for single‑word aliases, with safe threshold
-#   - Each canonical counts AT MOST 1 (dedup)
-#   - Stopwords never fuzzy‑matched
+# Purpose:
+#   Detect whether a query contains >= 2 canonical legal concepts
+#   using only:
+#       - gazetteer_concepts.txt
+#       - gazetteer_cases.txt
 #
-# Threshold:
-#   >= 2 canonical hits → RAG
-#   <  2 → Chat
+#   Aliases are EXCLUDED entirely from routing logic.
+#   This eliminates alias-inflation (e.g., C-628/13, “Lafonta v AMF” etc.)
 #
-# This guarantees:
-#   - “ECJ Lafonat” → 2 concepts (ECJ + Lafonta)
-#   - “summarize the ECJ decision in Lafonat” → 2 concepts ONLY
-#   - Never inflated counts (no 4‑concept bugs)
-#   - Typo tolerance where intended
+#   Stable, deterministic behaviour:
+#       “Summarize the ECJ decision in Lafonta” → 2 concepts
+#       “Summarize the ECJ decision in Lafonat” → 2 concepts (fuzzy Lafonat→Lafonta)
+#       “Summarize Lafonta” → 1 concept
+#       “ECJ Spector Lafonta” → 3 concepts
+#
 # -----------------------------------------------------------------------------
 
 from __future__ import annotations
@@ -31,11 +30,6 @@ from typing import Dict, Set, List
 # Normalization utilities
 # -----------------------------------------------------------------------------
 _HYPHEN_MAP = dict.fromkeys(map(ord, "‑–—−—"), ord("-"))
-_STOPWORDS = {
-    "can", "you", "tell", "me", "about", "what", "summarize",
-    "summarise", "please", "in", "the", "a", "an", "on",
-    "of", "decision", "case", "ec", "cj", "decision"
-}
 
 def _norm(text: str) -> str:
     if not text:
@@ -46,8 +40,16 @@ def _norm(text: str) -> str:
     return " ".join(t.split())
 
 
+# Stopwords ignored in fuzzy matching
+_STOPWORDS = {
+    "can", "you", "tell", "me", "about", "what", "summarize", "summarise",
+    "please", "in", "the", "a", "an", "on", "of", "decision",
+    "explain", "describe", "give", "provide", "case", "ec",
+}
+
+
 # -----------------------------------------------------------------------------
-# Gazetteer file readers
+# Load canonical gazetteer ONLY (concepts + cases)
 # -----------------------------------------------------------------------------
 def _read_file(path: str) -> List[str]:
     if not os.path.exists(path):
@@ -61,114 +63,81 @@ def _read_file(path: str) -> List[str]:
     return out
 
 
-def _parse_aliases(path: str) -> Dict[str, Set[str]]:
+def _dedup_nested_canonicals(terms: List[str]) -> List[str]:
     """
-    Parse alias entries:
-      Canonical | Alias1 | Alias2 | ...
+    Remove shorter canonical entries that are substrings of longer ones.
+    E.g. ["spector", "spector photo"] → ["spector photo"]
     """
-    rows = _read_file(path)
-    mapping: Dict[str, Set[str]] = {}
-
-    for raw in rows:
-        parts = [p.strip() for p in raw.split("|") if p.strip()]
-        if not parts:
-            continue
-
-        canonical = parts[0]
-        aliases = parts[1:] if len(parts) > 1 else []
-
-        s = mapping.setdefault(canonical, set())
-        s.add(canonical)
-        for a in aliases:
-            s.add(a)
-
-    return mapping
+    normed = sorted({_norm(t) for t in terms}, key=len, reverse=True)
+    deduped = []
+    for t in normed:
+        if not any(t in longer for longer in deduped):
+            deduped.append(t)
+    return deduped
 
 
-# -----------------------------------------------------------------------------
-# Build canonical gazetteer: canonical -> {all variants}
-# -----------------------------------------------------------------------------
-def _load_canonical_map() -> Dict[str, Set[str]]:
+def _load_canonical_terms() -> List[str]:
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
     concepts_path = os.path.join(base_dir, "..", "mentor", "rag", "gazetteer_concepts.txt")
     cases_path    = os.path.join(base_dir, "..", "mentor", "rag", "gazetteer_cases.txt")
-    aliases_path  = os.path.join(base_dir, "..", "mentor", "rag", "gazetteer_aliases.txt")
 
     concepts = _read_file(concepts_path)
     cases    = _read_file(cases_path)
-    alias_map = _parse_aliases(aliases_path)
 
-    canonical_map: Dict[str, Set[str]] = {}
-
-    # Concepts
-    for c in concepts:
-        canonical_map.setdefault(c, set()).add(c)
-
-    # Cases
-    for c in cases:
-        canonical_map.setdefault(c, set()).add(c)
-
-    # Alias entries
-    for canon, alset in alias_map.items():
-        s = canonical_map.setdefault(canon, set())
-        for a in alset:
-            s.add(a)
-
-    # Normalize keys + variants
-    out: Dict[str, Set[str]] = {}
-    for canon, variants in canonical_map.items():
-        canon_n = _norm(canon)
-        out[canon_n] = {_norm(v) for v in variants if v}
-
-    return out
+    canonicals = concepts + cases
+    return _dedup_nested_canonicals(canonicals)
 
 
-_CANONICAL_MAP: Dict[str, Set[str]] = _load_canonical_map()
+_CANONICAL_TERMS: List[str] = _load_canonical_terms()
 
 
 # -----------------------------------------------------------------------------
-# Matching logic: EXACT + SAFE FUZZY
+# Matching logic: EXACT + SAFE FUZZY on CANONICALS only
 # -----------------------------------------------------------------------------
-def _canonical_matches(variants: Set[str], q: str, q_words: List[str]) -> bool:
+def _canonical_match(canonical: str, q: str, q_words: List[str]) -> bool:
     """
-    Returns True if ANY variant of the canonical entry matches the query.
-    Rules:
-      • Exact substring match allowed (multi-word OK)
-      • Fuzzy match ONLY for single‑word variants
-      • Ignore stopwords + very short tokens
+    Return True if this canonical concept appears in the query:
+      - EXACT substring → True
+      - FUZZY match:
+            * canonical is single-word
+            * token length >= 5
+            * ratio >= 0.88
+            * skip stopwords
     """
-    for v in variants:
 
-        # Exact match (preferred)
-        if v and v in q:
-            return True
+    # 1) Exact match first (multi-word allowed)
+    if canonical in q:
+        return True
 
-        # Fuzzy match ONLY for single‑word variants
-        if " " in v:
+    # 2) Fuzzy match only for single-word canonicals
+    if " " in canonical:
+        return False
+
+    if len(canonical) < 5:
+        return False
+
+    for w in q_words:
+        if len(w) < 5:
+            continue
+        if w in _STOPWORDS:
             continue
 
-        for w in q_words:
-            if len(w) < 5:
-                continue
-            if w in _STOPWORDS:
-                continue
-
-            ratio = difflib.SequenceMatcher(None, w, v).ratio()
-            if ratio >= 0.88:
-                return True
+        ratio = difflib.SequenceMatcher(None, w, canonical).ratio()
+        if ratio >= 0.88:
+            return True
 
     return False
 
 
 # -----------------------------------------------------------------------------
-# PUBLIC API
+# Public API
 # -----------------------------------------------------------------------------
 def route(user_query: str, *, threshold: int = 2) -> Dict[str, int]:
     """
-    Count how many CANONICAL gazetteer entries match the query.
+    Count canonical gazetteer hits (exact + safe fuzzy).
     >= threshold → RAG
-    < threshold → Chat
+    <  threshold → Chat
     """
     q = _norm(user_query)
     if not q:
@@ -177,8 +146,8 @@ def route(user_query: str, *, threshold: int = 2) -> Dict[str, int]:
     q_words = q.split()
     hits = 0
 
-    for canon, variants in _CANONICAL_MAP.items():
-        if _canonical_matches(variants, q, q_words):
+    for canon in _CANONICAL_TERMS:
+        if _canonical_match(canon, q, q_words):
             hits += 1
 
     mode = "rag" if hits >= threshold else "chat"
