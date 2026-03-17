@@ -120,7 +120,11 @@ def route(user_query: str) -> Dict[str, Any]:
         + counts["articles"]
         + counts["sections"]
     )
-
+    print("signals_for_debug=", [((s.get("type") or "").lower(),
+                              (s.get("canonical") or ""),
+                              float(s.get("confidence", 0.0) or 0.0))
+                             for s in signals])
+    print("sum_conf=", round(total_conf, 3), "has_case=", has_case)
     # Routing by your simplified rules
     if total_conf > 2.5:
         mode = "rag"
