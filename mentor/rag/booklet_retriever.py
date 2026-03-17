@@ -487,7 +487,7 @@ def extract_signals(query: str, gaz: Gazetteers, corpus_auto_alias: Dict[str, Se
                         surface=tok,
                         canonical=canon_norm,
                         confidence=1.0,
-                        expanded=set(_expand_aliases({canon_norm}, alias_bi)),
+                        expanded=set(_expand_aliases({canon_norm}, gaz.alias_bi)),
                         fuzzy_eligible=False
                     ))
                     continue  # next token
@@ -497,7 +497,7 @@ def extract_signals(query: str, gaz: Gazetteers, corpus_auto_alias: Dict[str, Se
                         surface=tok,
                         canonical=canon_norm,
                         confidence=1.0,
-                        expanded=set(_expand_aliases({canon_norm}, alias_bi)),
+                        expanded=set(_expand_aliases({canon_norm}, gaz.alias_bi)),
                         fuzzy_eligible=False
                     ))
                     continue  # next token
