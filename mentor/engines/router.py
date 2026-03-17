@@ -1,22 +1,26 @@
-# app/router2.py
+# router.py
 from __future__ import annotations
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
-# Import the retriever and its signal extractor
-from mentor.rag.booklet_retriever import extract_signals, ParagraphRetriever
+# Resilient import: works whether you run as a package or locally
+try:
+    from mentor.rag.booklet_retriever import extract_signals, ParagraphRetriever  # package layout
+except Exception:
+    from booklet_retriever import extract_signals, ParagraphRetriever  # local layout
 
 # One global retriever instance: loads gazetteers, booklet corpus, and auto-aliases once
-_retriever = ParagraphRetriever()               # loads gazetteers + corpus
+_retriever = ParagraphRetriever()
 _gaz = _retriever.gaz
-_auto_alias = _retriever.alias_bi               # merged alias map (gazetteer + auto-alias)
+_auto_alias = _retriever.alias_bi  # merged alias map (gazetteer + auto-alias)
 
-# -----------------------------
-# Internal helpers
-# -----------------------------
-def _summarize_signals(signals: List[Dict[str, Any]]) -> Dict[str, int]:
+# Case-like types we consider for the “has case” condition
+_CASE_TYPES = {"case_name", "case_no", "case_number", "case"}
+
+
+def _summarize_for_ui(signals: List[Dict[str, Any]]) -> Dict[str, int]:
     """
-    Build type-aware counts. We intentionally exclude 'other' from 'effective' decisions.
-    Also dedupe per (type, canonical) to avoid double-counting.
+    Build lightweight counts purely for display/debug (NOT used for routing).
+    We exclude 'other' from 'effective' just like before.
     """
     counts = {
         "concepts": 0,
@@ -26,25 +30,17 @@ def _summarize_signals(signals: List[Dict[str, Any]]) -> Dict[str, int]:
         "sections": 0,
         "other": 0,
     }
-    seen_keys = set()
-
     for s in signals:
-        typ = (s.get("type") or "").lower()
-        can = (s.get("canonical") or "").lower()
-        key = (typ, can)
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
-
-        if typ == "concept":
+        t = (s.get("type") or "").strip().lower()
+        if t == "concept":
             counts["concepts"] += 1
-        elif typ == "case_name":
+        elif t == "case_name":
             counts["cases"] += 1
-        elif typ == "case_no":
+        elif t == "case_no":
             counts["case_numbers"] += 1
-        elif typ == "article":
+        elif t == "article":
             counts["articles"] += 1
-        elif typ == "section":
+        elif t == "section":
             counts["sections"] += 1
         else:
             counts["other"] += 1
@@ -58,74 +54,62 @@ def _summarize_signals(signals: List[Dict[str, Any]]) -> Dict[str, int]:
     )
     return counts
 
-# -----------------------------
-# Public API
-# -----------------------------
+
+def _ui_mode_label(mode: str, total_conf: float) -> str:
+    """
+    Returns a ready-to-display label like:
+        "Mode: RAG (Confidence=1.99)"  or  "Mode: Chat (Confidence=1.40)"
+    """
+    return f"Mode: {'RAG' if mode == 'rag' else 'Chat'} (Confidence={total_conf:.2f})"
+
+
 def route(user_query: str) -> Dict[str, Any]:
     """
-    Simplified confidence-based router (Option A):
-      - Sum confidences over all signals returned by extract_signals().
-      - If total_conf > 2.5 -> RAG
-      - Else if total_conf > 1.5 AND there is a case_name or case_no -> RAG
-      - Else -> assistant (chat)
+    Confidence-based router (Option A, finalized):
+      - Let signals = extract_signals(query)
+      - total_conf = sum(confidence for each signal)
+      - has_case = any(type in {'case_name','case_no','case_number','case'})
+      - Routing:
+          * if total_conf > 2.5 -> 'rag'
+          * elif total_conf > 1.5 and has_case -> 'rag'
+          * else -> 'chat'
+    Always returns a UI label showing the mode and the exact confidence sum used.
     """
+    # Empty/whitespace query -> assistant chat with zero diagnostics
     if not user_query or not user_query.strip():
+        total_conf = 0.0
+        mode = "chat"
         return {
-            "mode": "chat",
-            "count": 0,
+            "mode": mode,
             "counts": {
                 "concepts": 0, "cases": 0, "case_numbers": 0,
                 "articles": 0, "sections": 0, "other": 0, "effective": 0
             },
-            "total_conf": 0.0,
+            "count": 0,  # effective count (display only)
+            "total_conf": total_conf,
+            "ui_label": _ui_mode_label(mode, total_conf),
+            "router_version": "conf-sum-A-UI-2026-03-17",
         }
 
+    # 1) Extract signals
     signals: List[Dict[str, Any]] = extract_signals(
         user_query,
         gaz=_gaz,
         corpus_auto_alias=_auto_alias,
     )
 
-    # Sum confidences and compute lightweight counts (for UI only)
+    # 2) Sum confidences and compute has_case
     total_conf = 0.0
-    counts = {
-        "concepts": 0, "cases": 0, "case_numbers": 0,
-        "articles": 0, "sections": 0, "other": 0, "effective": 0
-    }
     has_case = False
 
     for s in signals:
+        # confidence defaults safely to 0.0 if missing
         total_conf += float(s.get("confidence", 0.0) or 0.0)
-        t = (s.get("type") or "").lower()
-        if t == "concept":
-            counts["concepts"] += 1
-        elif t == "case_name":
-            counts["cases"] += 1
+        t = (s.get("type") or "").strip().lower()
+        if t in _CASE_TYPES:
             has_case = True
-        elif t == "case_no":
-            counts["case_numbers"] += 1
-            has_case = True
-        elif t == "article":
-            counts["articles"] += 1
-        elif t == "section":
-            counts["sections"] += 1
-        else:
-            counts["other"] += 1
 
-    # effective (for display only; not used for routing anymore)
-    counts["effective"] = (
-        counts["concepts"]
-        + counts["cases"]
-        + counts["case_numbers"]
-        + counts["articles"]
-        + counts["sections"]
-    )
-    print("signals_for_debug=", [((s.get("type") or "").lower(),
-                              (s.get("canonical") or ""),
-                              float(s.get("confidence", 0.0) or 0.0))
-                             for s in signals])
-    print("sum_conf=", round(total_conf, 3), "has_case=", has_case)
-    # Routing by your simplified rules
+    # 3) Decide mode (ONLY by confidence and has_case per your spec)
     if total_conf > 2.5:
         mode = "rag"
     elif total_conf > 1.5 and has_case:
@@ -133,9 +117,15 @@ def route(user_query: str) -> Dict[str, Any]:
     else:
         mode = "chat"
 
+    # 4) UI counts (display/debug only; not part of the decision)
+    counts = _summarize_for_ui(signals)
+
+    # 5) Return with a ready-to-display label
     return {
         "mode": mode,
-        "count": counts["effective"],  # UI display only
+        "count": counts["effective"],    # for display only
         "counts": counts,
         "total_conf": round(total_conf, 3),
+        "ui_label": _ui_mode_label(mode, total_conf),  # <- always indicates mode + confidence
+        "router_version": "conf-sum-A-UI-2026-03-17",
     }
