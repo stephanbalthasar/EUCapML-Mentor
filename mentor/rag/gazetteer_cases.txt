@@ -61,4 +61,5 @@ Telekom I
 XI ZB 12/12
 Telekom II
 XI ZB 24/16
-Wohnungsbau Leipzig West | XI ZR 344/11
+Wohnungsbau Leipzig West
+XI ZR 344/11
