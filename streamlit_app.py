@@ -10,6 +10,7 @@ import requests
 import streamlit as st
 import time
 from typing import Callable, List, Dict, Any
+from app.router import route
 # ───────────────────────────────────────────────────────────────────────────────
 
 # === HELPERS ===
@@ -645,35 +646,44 @@ with tab_feedback:
                 )
 
 # --- Tutor chat (separate, uncluttered) ---
-# --- General Chat (conversation mode + booklet grounding) ---
 with tab_chat:
+
     def on_ask_tutor(user_q: str, history: List[Dict[str, Any]]) -> str:
-    # Optional: log student usage (unchanged)
+
+        # Optional: your existing logging
         if st.session_state.get("role") == "student":
             update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "CHAT", "student"])
-        try:
-            return chat_engine.answer(
-                user_q,               # raw question only
+
+        # HEURISTIC ROUTER (no LLM):
+        decision = route(user_q, para_retriever)   # para_retriever already built above
+
+        if decision["mode"] == "rag":
+            # RAG: existing booklet-based ChatEngine
+            answer = chat_engine.answer(
+                user_query=user_q,
                 model=model,
                 temperature=temp,
                 max_tokens=700
             )
-        except Exception as e:
-            msg = str(e)
-            if "rate" in msg.lower() or "429" in msg:
-                return (
-                    "⏳ We’re hitting the provider’s rate limit right now. "
-                    "Please wait ~10–20 seconds and ask again."
-                )
-            return "Sorry—there was a temporary issue. Please try again in a few seconds."
-    
-    # 👉 This call actually renders the chat UI inside the tab
+            return f"_Mode: Booklet-grounded (concepts={decision['count']})_\n\n{answer}"
+
+        else:
+            # Chat Mode: friendly assistant (no retrieval)
+            answer = chat_engine.assist(
+                user_query=user_q,
+                model="llama-3.1-8b-instant",
+                temperature=0.6,
+                max_tokens=350
+            )
+            return f"_Mode: Chat (concepts={decision['count']})_\n\n{answer}"
+
     render_conversation(
         state_key="tutor_chat",
-        title="General chat (booklet grounded generic conversation)",
+        title="General Chat (auto‑routed: Chat ↔ Booklet‑grounded)",
         placeholder="Ask the tutor…",
         on_ask=on_ask_tutor,
         clear_label="🗑️ Clear chat",
     )
+
 # --- Page footer (authenticated pages only) ---
 render_footer()
