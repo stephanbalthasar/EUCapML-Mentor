@@ -132,3 +132,26 @@ def build_tutor_messages(*,
         {"role": "system", "content": system},
         {"role": "user", "content": user_content},
     ]
+# ---------------------------------------------------------------------------
+# Assistant (Chat Mode) Prompt
+# ---------------------------------------------------------------------------
+def build_assistant_messages(user_query: str) -> list:
+    """
+    Build a friendly conversational prompt for Chat mode.
+    - No booklet citations
+    - No retrieval
+    - Nudges the user to include more legal context when needed
+    """
+    system_msg = (
+        "You are a friendly assistant helping a law student. "
+        "This is CHAT mode: do NOT cite the booklet or mention retrieval. "
+        "Answer conversationally and helpfully. "
+        "If the user asks a legal question but provides too little legal context, "
+        "gently ask for clarification (e.g., which Article, which case, or which regulation). "
+        "Keep responses concise."
+    )
+
+    return [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": user_query}
+    ]
