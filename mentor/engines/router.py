@@ -40,19 +40,24 @@ def _read_file(path: str) -> List[str]:
     with open(path, "r", encoding="utf-8", errors="replace") as f:
         return [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
-
 def _dedup_nested_canonicals(terms: List[str]) -> List[str]:
     """
-    Remove shorter canonicals that are substrings of longer ones.
-    Example: ["spector", "spector photo"] -> ["spector photo"]
+    Minimal fix:
+    - Normalize all terms
+    - Remove exact duplicates ONLY
+    - Preserve short canonicals (e.g., MAR, WpHG)
+    - Preserve multi‑word concepts (e.g., inside information)
     """
-    normed = sorted({_norm(t) for t in terms}, key=len, reverse=True)
+    seen = set()
     deduped = []
-    for t in normed:
-        if not any(t in longer for longer in deduped):
-            deduped.append(t)
-    return deduped
 
+    for t in terms:
+        n = _norm(t)
+        if n and n not in seen:
+            seen.add(n)
+            deduped.append(n)
+
+    return deduped
 
 def _load_canonicals() -> List[str]:
     base = os.path.dirname(os.path.abspath(__file__))
