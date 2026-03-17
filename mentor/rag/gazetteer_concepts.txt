@@ -1,27 +1,39 @@
-Accounting Directive
+2001/34/EC
+2004/109/EC
+2004/25/EC
+2004/39/EC
+2007/36/EC
+2009/65/EC
+2011/61/EU
 2013/34/EU
+2014/57/EU
+2014/65/EU
+2017/1129
+2017/1132
+2019/2088
+236/2012
+462/2013
+596/2014
+600/2014
+Accounting Directive
 Acting in concert
 Ad hoc announcement
-Alternative Investment Fund
 AIFM
-2011/61/EU
-Bundesanstalt für Finanzdienstleistungsaufsicht
-Transferable securities
-Subscription Agreement
+Alternative Investment Fund
 BörsG
 BörsO
 BörsZulV
+Bundesanstalt für Finanzdienstleistungsaufsicht
 Capital Markets Union
 Central counterparty
 Central Securities Depository
-Committee of European Securities Regulators
-2017/1132
+Clearing 
 Closed periods
+Committee of European Securities Regulators
 Common stock
 Company Law Directive
 Corporate Sustainability Reporting Directive
 Correlation table
-462/2013
 Credit Rating
 Credit Rating Agencies Regulation
 Delisting
@@ -30,38 +42,38 @@ Derivative
 Digital securities
 Director’s dealings
 EBA
-European Banking Authority
 ECJ
-European Court of Justice
 EEA
-European Economic Area
 EFTA
-European Free Trade Association
 EFTA Court
 EIOPA
-European Insurance and Occupational Pension Funds Authority
 Eligible counterparty
 Emittentenleitfaden
 Equivalence and effectiveness
-ESAP
-European Single Access Point
-ESEF
-European Single Electronic Format
-ESFS
-European System of Financial Stability
 ESA
-European Supervisory Authority
+ESAP
+ESEF
+ESFS
 ESMA
-European Securities and Markets Authority
 EU
-European Union
-Listing Act
 Eurex
+European Banking Authority
+European Court of Justice
+European Economic Area
+European Free Trade Association
+European Green Bonds Standard Regulation
+European Insurance and Occupational Pension Funds Authority
 European Market Infrastructure Regulation
+European Securities and Markets Authority
+European Single Access Point
 European Single Access Point
 European Single Electronic Format
+European Single Electronic Format
+European Supervisory Authority
 European Supervisory Authority
 European System of Financial Stability
+European System of Financial Stability
+European Union
 eWpG
 Financial instrument
 Financial Instrument Reference Data System
@@ -73,7 +85,6 @@ Future
 FWB
 Global certificate
 Goldplating
-European Green Bonds Standard Regulation
 Implementing technical standard
 Initial public offering
 Inside information
@@ -91,56 +102,50 @@ KAGB
 Kapitalanlagegesetzbuch
 Lamfalussy process
 Listed company
+Listing Act
 Listing Directive
-2001/34/EC
 MAD Directive
-2014/57/EU
 Managers’ transactions
 Manufacturer
 MAR 
-596/2014
 Market Abuse Directive
 Market Abuse Regulation
 Markets in Financial Instruments Directive
 Marking the close
 MiFID I
-2004/39/EC
 MiFID II
-2014/65/EU
 MiFIR
-600/2014
 MTF
 Multilateral Trading Facility
 Naming and shaming
-NCA
 National Competent Authority
+NCA
 NFRD
 Non-Financial Reporting Directive
 Notes
 offer to the public
-public offer
-public offering
-Prospectus
 Open Market
 Organisierter Markt
-OTC
-Over-the-counter
-OTF
 Organized Trading Facility
+OTC
+OTF
+Over-the-counter
 Par
 Pari passu
 Passporting
 PR  
-2017/1129
-Preferred stock
 Preference share
+Preferred stock
 Primary market
 Private placement
 Product intervention
 Professional Client
+Prospectus
 Prospectus Regulation
 Prospectus Supplement
 Prudential rules
+public offer
+public offering
 Qualified investor
 Rating
 Registered bond
@@ -148,60 +153,55 @@ Registered share
 Regulated information
 Regulated market
 Regulatory technical standard
-Related Party Transaction
 Regulatory technical standard
-SchVG
+Related Party Transaction
 Schuldverschreibungsgesetz
+SchVG
 Secondary market
 Securities
-Transferable securities
 Security token
 Senior
-Subordinated
 Settlement
-Clearing 
 SFDR
-2019/2088
 Shareholder Rights Directive
-SRD
 Short Selling Regulation
-SSR
 Spot transaction
 SRD
-2007/36/EC
+SRD
 SSR
-236/2012
+SSR
 Subordinated
+Subordinated
+Subscription Agreement
 Subscription Agreement
 Supplement
 Sustainable Finance Disclosure Regulation
 Takeover Bid Directive
 Taxonomy Regulation
 TBD
-2004/25/EC
 TD
-2004/109/EC
-Trading venue
-Transferable securities
-Transparency Directive
 Token
 Tokenized securities
+Trading venue
+Transferable securities
+Transferable securities
+Transferable securities
+Transparency Directive
 UCITS
-Undertakings for collective investment in transferable securities
 UCITS Directive
-2009/65/EC
+Undertakings for collective investment in transferable securities
 Undertakings for collective investment in trans-ferable securities  → UCITS
 VermAnlG
 Vermögensanlagengesetz
 Vorzugsaktie
+Wertpapiererwerbs- und Übernahmegesetz
+Wertpapierhandelsanzeigeverordnung
+Wertpapierhandelsgesetz
+Wertpapierprospektgesetz
 Wholesale transaction
 WpAV
-Wertpapierhandelsanzeigeverordnung
 WpHG
-Wertpapierhandelsgesetz
 WpPG
-Wertpapierprospektgesetz
 WpÜG
-Wertpapiererwerbs- und Übernahmegesetz
-WpÜG-AV
 WpÜG-Angebotsverordnung
+WpÜG-AV
