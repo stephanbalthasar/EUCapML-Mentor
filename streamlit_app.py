@@ -678,6 +678,29 @@ with tab_chat:
         # Optional: keep your student usage ping
         if st.session_state.get("role") == "student":
             update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "CHAT", "student"])
+        
+        # --- NEW: capture signals for the sidebar debugger ---
+        try:
+            sigs = extract_signals(
+                user_q,
+                gaz=para_retriever.gaz,            # your ParagraphRetriever exposes gaz
+                corpus_auto_alias=para_retriever.alias_bi,  # merged alias graph
+            )
+            # Normalize to a printable structure (don’t mutate original dicts)
+            cleaned = []
+            for s in (sigs or []):
+                cleaned.append({
+                    "type": s.get("type"),
+                    "surface": s.get("surface"),
+                    "canonical": s.get("canonical"),
+                    "confidence": round(float(s.get("confidence", 0.0)), 3),
+                    # Keep a short preview of the expanded set for readability
+                    "expanded_preview": ", ".join(sorted(list(s.get("expanded", set())))[:6]),
+                })
+            st.session_state["_last_signals"] = cleaned
+        except Exception as e:
+            # Keep UX resilient; store the error so you can see it in the panel
+            st.session_state["_last_signals"] = [{"type": "ERROR", "surface": "", "canonical": str(e), "confidence": 0.0, "expanded_preview": ""}]
 
         # Heuristic router (no LLM): counts gazetteer hits (exact or fuzzy)
         decision = route(user_q)  # returns {"mode": "rag"|"chat", "count": int}
