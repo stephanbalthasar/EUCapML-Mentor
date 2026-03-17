@@ -470,7 +470,10 @@ def extract_signals(query: str, gaz: Gazetteers, corpus_auto_alias: Dict[str, Se
 
     surface_tokens = _wordish_tokens(q)
     surface_tokens.sort(key=lambda x: (-len(_strip_nonword(x)), x.lower()))
-
+    # NEW: lower-cased tokens for case-insensitive phrase detection (concepts)
+    tokens_lc = [t.lower() for t in surface_tokens]
+    token_set_lc = set(tokens_lc)
+    
     for tok in surface_tokens:
         # --- NEW: alias-first snapping (fixes "Spector", acronyms, short forms) ---
         tok_norm = tok.lower()
@@ -512,6 +515,7 @@ def extract_signals(query: str, gaz: Gazetteers, corpus_auto_alias: Dict[str, Se
             canon_words = canon_norm.split()
             if len(canon_words) > 1:
                 # all canonical words must be present as tokens
+                if all(w in token_set_lc for w in canon_words):
                 if all(w in surface_tokens for w in canon_words):
                     signals.append(dict(
                         type="concept",
