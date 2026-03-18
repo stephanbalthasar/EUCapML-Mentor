@@ -480,6 +480,7 @@ with st.sidebar:
                 st.caption(
                     f"Router → {last_dec.get('label')} · v={last_dec.get('v')}"
                 )
+            st.caption(f"Router → {decision.get('ui_label')} · v={decision.get('router_version')}")
 
 # --- Tabs: Feedback + Tutor chat ---
 tab_feedback, tab_chat = st.tabs(["📝 Sample Exams", "💬 General Chat"])
@@ -726,7 +727,13 @@ with tab_chat:
             user_query=user_q,
             recent_user_messages=recent_user_msgs
         )
-                
+        
+        # Store for debugger if needed
+        st.session_state["_last_router_decision"] = {
+            "label": decision["ui_label"],
+            "v": decision["router_version"],
+        }
+        
         # Store router information for the sidebar debugger
         st.session_state["_last_router_decision"] = {
             "mode": decision.get("mode"),
