@@ -480,6 +480,10 @@ with st.sidebar:
                 st.caption(
                     f"Router → {last_dec.get('label')} · v={last_dec.get('v')}"
                 )
+            cq = st.session_state.get("_last_combined_query")
+            if cq:
+                with st.expander("Combined query used for RAG"):
+                    st.code(cq, language="text")
             
 # --- Tabs: Feedback + Tutor chat ---
 tab_feedback, tab_chat = st.tabs(["📝 Sample Exams", "💬 General Chat"])
@@ -749,6 +753,8 @@ with tab_chat:
                 user_q,
                 window=3
             )
+
+            st.session_state["_last_combined_query"] = combined_q
             
             answer = chat_engine.answer(
                 user_query=combined_q,     # IMPORTANT
