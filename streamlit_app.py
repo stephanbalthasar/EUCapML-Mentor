@@ -10,6 +10,8 @@ import requests
 import streamlit as st
 import time
 from typing import Callable, List, Dict, Any
+from app.router import route
+from mentor.rag.booklet_retriever import extract_signals
 # ───────────────────────────────────────────────────────────────────────────────
 
 # === HELPERS ===
@@ -451,8 +453,36 @@ with st.sidebar:
         st.cache_data.clear()
         st.success("Re-loaded. Re-run the action to use the latest JSON.")
 
+    st.divider()
+    debug_signals = st.toggle("🔧 Show signal debugger", value=False, help=(
+        "Show the raw signals detected by extract_signals() for the last query "
+        "(type, surface, canonical, confidence, expanded)."
+    ))
+    st.session_state["_show_signal_debugger"] = debug_signals
+
+    if debug_signals:
+        st.markdown("#### Signal Debugger")
+        last = st.session_state.get("_last_signals")
+        if not last:
+            st.caption("No signals yet — ask a question to see them here.")
+        else:
+            # Render a compact table
+            import pandas as pd
+            df = pd.DataFrame(last)
+            # Nice, narrow columns for readability
+            st.dataframe(
+                df[["type", "surface", "canonical", "confidence", "expanded_preview"]],
+                hide_index=True,
+                use_container_width=True,
+            )
+            last_dec = st.session_state.get("_last_router_decision")
+            if last_dec:
+                st.caption(
+                    f"Router → {last_dec.get('label')} · v={last_dec.get('v')}"
+                )
+
 # --- Tabs: Feedback + Tutor chat ---
-tab_feedback, tab_chat = st.tabs(["📝 Sample Exam Cases", "💬 General Chat"])
+tab_feedback, tab_chat = st.tabs(["📝 Sample Exams", "💬 General Chat"])
 
 # Small helper: persist latest run per case+question
 def _key(case_id: str, q_label: str) -> str:
@@ -645,35 +675,66 @@ with tab_feedback:
                 )
 
 # --- Tutor chat (separate, uncluttered) ---
-# --- General Chat (conversation mode + booklet grounding) ---
 with tab_chat:
+
     def on_ask_tutor(user_q: str, history: List[Dict[str, Any]]) -> str:
-    # Optional: log student usage (unchanged)
+        # Optional: keep your student usage ping
         if st.session_state.get("role") == "student":
             update_gist([time.strftime("%Y-%m-%d %H:%M:%S"), "CHAT", "student"])
+        
+        # --- NEW: capture signals for the sidebar debugger ---
         try:
-            return chat_engine.answer(
-                user_q,               # raw question only
+            sigs = extract_signals(
+                user_q,
+                gaz=para_retriever.gaz,            # your ParagraphRetriever exposes gaz
+                corpus_auto_alias=para_retriever.alias_bi,  # merged alias graph
+            )
+            # Normalize to a printable structure (don’t mutate original dicts)
+            cleaned = []
+            for s in (sigs or []):
+                cleaned.append({
+                    "type": s.get("type"),
+                    "surface": s.get("surface"),
+                    "canonical": s.get("canonical"),
+                    "confidence": round(float(s.get("confidence", 0.0)), 3),
+                    # Keep a short preview of the expanded set for readability
+                    "expanded_preview": ", ".join(sorted(list(s.get("expanded", set())))[:6]),
+                })
+            st.session_state["_last_signals"] = cleaned
+        except Exception as e:
+            # Keep UX resilient; store the error so you can see it in the panel
+            st.session_state["_last_signals"] = [{"type": "ERROR", "surface": "", "canonical": str(e), "confidence": 0.0, "expanded_preview": ""}]
+
+        # Heuristic router (no LLM): counts gazetteer hits (exact or fuzzy)
+        decision = route(user_q)  # now returns ui_label + total_conf + router_version
+        
+        if decision["mode"] == "rag":
+            # RAG pipeline
+            answer = chat_engine.answer(
+                user_query=user_q,
                 model=model,
                 temperature=temp,
                 max_tokens=700
             )
-        except Exception as e:
-            msg = str(e)
-            if "rate" in msg.lower() or "429" in msg:
-                return (
-                    "⏳ We’re hitting the provider’s rate limit right now. "
-                    "Please wait ~10–20 seconds and ask again."
-                )
-            return "Sorry—there was a temporary issue. Please try again in a few seconds."
-    
-    # 👉 This call actually renders the chat UI inside the tab
+            # Use the label built by the router (includes the confidence sum)
+            return f"_{decision.get('ui_label', 'Mode: RAG')}_\n\n{answer}"
+        else:
+            # Assistant pipeline
+            answer = chat_engine.assist(
+                user_query=user_q,
+                model="llama-3.1-8b-instant",
+                temperature=0.6,
+                max_tokens=350
+            )
+            return f"_{decision.get('ui_label', 'Mode: Chat')}_\n\n{answer}"
+        
     render_conversation(
         state_key="tutor_chat",
-        title="General chat (booklet grounded generic conversation)",
+        title="General Chat (Course Material)",
         placeholder="Ask the tutor…",
         on_ask=on_ask_tutor,
         clear_label="🗑️ Clear chat",
     )
+
 # --- Page footer (authenticated pages only) ---
 render_footer()

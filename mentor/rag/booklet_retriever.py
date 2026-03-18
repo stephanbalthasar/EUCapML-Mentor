@@ -287,6 +287,10 @@ class Gazetteers:
                 cset.add(a)
                 bi.setdefault(a, set()).add(canon)
         self.alias_bi = bi
+        self.alias_bi_lc: Dict[str, Set[str]] = {}
+        for k, vs in self.alias_bi.items():
+            k_lc = k.lower()
+            s = self.alias_bi_lc.setdefault
 
 def _load_gazetteers_local() -> 'Gazetteers':
     txt_concepts = _read_local(LOCAL_CONCEPTS)
@@ -303,7 +307,10 @@ def _load_gazetteers_local() -> 'Gazetteers':
 # =============================================================================
 
 RE_SECTION = re.compile(r"§\s*\d+[a-z]?(?:\s*(?:Abs\.?|Satz)\s*\d+)*", re.IGNORECASE)
-RE_ARTICLE = re.compile(r"(?:Art\.?|Artikel)\s*\d+[a-z]?(?:\(\d+\))*", re.IGNORECASE)
+RE_ARTICLE = re.compile(
+    r"(?:Art\.?|Article|Artikel)\s*\d+[a-z]?(?:\(\d+\))*",
+    re.IGNORECASE
+)
 RE_DOCKET  = re.compile(r"\b(?:[CE]-\d+/\d{2}|[IVX]+\s+Z[RB]\s+\d+/\d{2})\b", re.IGNORECASE)
 
 def _strip_nonword(s: str) -> str:
@@ -467,8 +474,38 @@ def extract_signals(query: str, gaz: Gazetteers, corpus_auto_alias: Dict[str, Se
 
     surface_tokens = _wordish_tokens(q)
     surface_tokens.sort(key=lambda x: (-len(_strip_nonword(x)), x.lower()))
-
+    # NEW: lower-cased tokens for case-insensitive phrase detection (concepts)
+    tokens_lc = [t.lower() for t in surface_tokens]
+    token_set_lc = set(tokens_lc)
+    
     for tok in surface_tokens:
+        # --- NEW: alias-first snapping (fixes "Spector", acronyms, short forms) ---
+        tok_norm = tok.lower()
+        if tok_norm in gaz.alias_bi_lc:                 # case-insensitive hit
+            alias_targets = gaz.alias_bi_lc[tok_norm]   # targets are lower-cased canonicals
+            for canon in alias_targets:
+                canon_norm = canon.lower()
+                if tok_norm in gaz.alias_bi_lc:
+                    alias_targets = gaz.alias_bi_lc[tok_norm]
+                    for canon in alias_targets:
+                        canon_norm = canon.lower()
+                        if canon_norm in (c.lower() for c in gaz.concepts):
+                            signals.append(dict(
+                                type="concept",
+                                surface=tok,
+                                canonical=canon_norm,
+                                confidence=1.0,
+                                expanded=set(_expand_aliases({canon_norm}, gaz.alias_bi)),
+                                fuzzy_eligible=False
+                            ))
+                            # no 'break' here; multiple concept targets are unlikely but safe
+                    continue  # next token
+                                
+            # NOTE: we intentionally don't 'return' here; we still want to allow the
+            #       same token to match a concept alias below if applicable.
+            #       But we DO want to skip the rest of logic for this token
+            continue  # next token
+        
         if RE_SECTION.fullmatch(tok) or RE_ARTICLE.fullmatch(tok) or RE_DOCKET.fullmatch(tok):
             continue
 
@@ -476,6 +513,61 @@ def extract_signals(query: str, gaz: Gazetteers, corpus_auto_alias: Dict[str, Se
         snapped_type = None
         confidence = 0.0
 
+        # --- CASE headword → full phrase snapping (Step 5) ---
+        # If 'tok' is the first word of a multi-word case name (e.g., "Spector" → "Spector Photo"),
+        # promote it to a case_name signal for all matching cases. This scales to bigrams/trigrams.
+        head_candidates = [c for c in gaz.cases if c.lower().startswith(tok_norm + " ")]
+        if head_candidates:
+            for canon in head_candidates[:5]:  # cap to avoid flooding on highly ambiguous heads
+                canon_norm = canon.lower()
+                expanded = set([canon_norm])
+                # include both manual aliases and auto aliases mined from the corpus
+                expanded = _expand_aliases(expanded, gaz.alias_bi)
+                expanded = _expand_aliases(expanded, corpus_auto_alias)
+                signals.append(dict(
+                    type="case_name",
+                    surface=tok,             # the user typed "Spector"; canonical carries "spector photo"
+                    canonical=canon_norm,
+                    confidence=0.99,         # strong, deterministic signal
+                    expanded=expanded,
+                    fuzzy_eligible=False
+                ))
+            continue  # done with this token; move to the next
+        
+        # --- NEW: multi-word canonical matching (fixes "inside information") ---
+        for canon in gaz.concepts:
+            canon_norm = canon.lower()
+            canon_words = canon_norm.split()
+            if len(canon_words) > 1:
+                # all canonical words must be present as tokens
+                if all(w in token_set_lc for w in canon_words):
+                    if all(w in surface_tokens for w in canon_words):
+                        signals.append(dict(
+                            type="concept",
+                            surface=tok,
+                            canonical=canon_norm,
+                            confidence=1.0,
+                            expanded={canon_norm},
+                            fuzzy_eligible=False
+                        ))
+                    break  # go to next tok
+        # --- multi-word canonical matching for CASE NAMES (Step 2) ---
+        for canon in gaz.cases:
+            canon_norm = canon.lower()
+            canon_words = canon_norm.split()
+            if len(canon_words) > 1:
+                # all canonical words must be present as tokens (case-insensitive)
+                if all(w in token_set_lc for w in canon_words):
+                    signals.append(dict(
+                        type="case_name",
+                        surface=tok,            # keep surface minimal; canonical carries the phrase
+                        canonical=canon_norm,   # e.g., "spector photo"
+                        confidence=1.0,
+                        expanded={canon_norm},
+                        fuzzy_eligible=False
+                    ))
+                    break  # go to next tok
+        
         best, score, margin = _difflib_best(tok, gaz.concepts)
         if best and _should_snap(tok, score, margin):
             canonical = best

@@ -7,9 +7,9 @@ Celesio I | II ZR 37/16
 Celesio II | II ZR 315/19
 Fédération Bancaire Française | C-911/19
 Geltl | Daimler | C-19/11
-Genil 48 | C-604/11
+Genil 48 | Genil | C-604/11
 Grøngaard | C-384/02
-Hermès | C-302/20
+Hermès | Hermes | C-302/20
 Hirmann | Immofinanz | C-174/12
 HOLD | C-352/20 
 Hypo Real Estate | HRE | II ZB 31/14
@@ -24,7 +24,7 @@ Postbank I | II ZR 353/12
 Postbank II | II ZR 9/21 | II ZR 14/21
 Schaerbeek | Linkebeek | Holding Communal | C‑627/23
 Spector Photo Group | Spector Photo | Spector | C-45/08
-Svema Trade |C-567/24
+Svema Trade | Svema | C-567/24
 Telekom I | XI ZB 12/12
 Telekom II | XI ZB 24/16
 Wohnungsbau Leipzig West | XI ZR 344/11

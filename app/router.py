@@ -110,7 +110,7 @@ def route(user_query: str) -> Dict[str, Any]:
             has_case = True
 
     # 3) Decide mode (ONLY by confidence and has_case per your spec)
-    if total_conf > 2.5:
+    if total_conf >= 2.0:
         mode = "rag"
     elif total_conf > 1.5 and has_case:
         mode = "rag"

@@ -121,7 +121,27 @@ class ChatEngine:
             reply_text += footer
     
         return reply_text
+    # -------------------------------------------------------------------------
+    # CHAT MODE (no retrieval)
+    # -------------------------------------------------------------------------
+    def assist(self, user_query, *, model="llama-3.1-8b-instant", temperature=0.6, max_tokens=300):
+        """
+        Pure conversational assistant:
+        - No retrieval
+        - No booklet grounding
+        - Uses assistant prompt from prompts.py
+        """
+        from mentor.prompts import build_assistant_messages
 
+        messages = build_assistant_messages(user_query)
+
+        result = self.llm.chat(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        return result if isinstance(result, str) else str(result)
 
     # -------- helpers (kept) --------------------
     def _extract_keywords(self, text):
