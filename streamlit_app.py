@@ -676,7 +676,16 @@ with tab_feedback:
 
 # --- Tutor chat (separate, uncluttered) ---
 with tab_chat:
-
+    def build_combined_query(recent_msgs, current_msg, window=3):
+        msgs = recent_msgs[-(window - 1):] + [current_msg]
+        parts = ["Combined user intent (last {} turns):".format(len(msgs)), ""]
+        for i, m in enumerate(msgs, 1):
+            parts.append(f"{i}. {m}")
+        parts.append("")
+        parts.append("Most recent user message:")
+        parts.append(current_msg)
+        return "\n".join(parts)
+    
     def on_ask_tutor(user_q: str, history: List[Dict[str, Any]]) -> str:
         # Optional: keep your student usage ping
         if st.session_state.get("role") == "student":
@@ -707,8 +716,17 @@ with tab_chat:
 
         # Heuristic router (no LLM): counts gazetteer hits (exact or fuzzy)
         # --- Router decision ---
-        decision = route(user_q)
+        # Build list of last user messages (not including current)
+        recent_user_msgs = [
+            m["content"] for m in history if m["role"] == "user"
+        ]
         
+        # Pass to router
+        decision = route(
+            user_query=user_q,
+            recent_user_messages=recent_user_msgs
+        )
+                
         # Store router information for the sidebar debugger
         st.session_state["_last_router_decision"] = {
             "mode": decision.get("mode"),
@@ -719,11 +737,18 @@ with tab_chat:
         
         # --- RAG vs Chat output WITHOUT inserting router metadata into the chat ---
         if decision["mode"] == "rag":
+            # Build combined query for RAG
+            combined_q = build_combined_query(
+                recent_user_msgs,
+                user_q,
+                window=3
+            )
+            
             answer = chat_engine.answer(
-                user_query=user_q,
+                user_query=combined_q,     # IMPORTANT
                 model=model,
                 temperature=temp,
-                max_tokens=700,
+                max_tokens=700
             )
             return answer
         else:
@@ -740,7 +765,7 @@ with tab_chat:
         title="General Chat (Course Material)",
         placeholder="Ask the tutor…",
         on_ask=on_ask_tutor,
-        clear_label="🗑️ Clear chat",
+        clear_label="🗑️ Clear chat for new topic ",
     )
 
 # --- Page footer (authenticated pages only) ---
