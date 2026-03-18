@@ -21,7 +21,7 @@ These implement the high‑level behaviours:
   - **Plan**: help students plan an answer before writing (outline, topics, anchors)
   - **Evaluate**: assess a finished answer (similarity, coverage, structured feedback)
   - **Explain**: answer follow‑up “why” questions about the feedback
-- **`ChatEngine`** → RAG‑augmented legal tutor (booklet + optional web), independent of model answers
+- **`ChatEngine`** → RAG‑augmented legal tutor (booklet + optional web), independent of model answers. Uses app.router for handling (chat vs. RAG). 
 
 Each engine has its own prompts, retrieval strategy, and post‑processing.
 
@@ -31,7 +31,6 @@ Reusable modules used by both engines:
 - **RAG subsystem** (booklet index, retrieval, filtering)
 - **LLM subsystem** (model‑agnostic interface)
 - **Booklet parsing** (DOCX → semantic chunks)
-- **Core utilities** (keyword extraction, similarity, citation helpers)
 - **Prompts** (separate prompt logic for both engines)
 
 ### **3. UI layer**
@@ -49,7 +48,8 @@ eucapml-mentor/
 └── app/
     ├── __init__.py
     ├── bootstrap_booklet.py
-    └── bootstrap_cases.py
+    ├── bootstrap_cases.py
+    └── router.py
 └── assets/
     ├── Notice.md            # Privacy and AI Notice
 └── mentor/
@@ -61,9 +61,12 @@ eucapml-mentor/
         ├── groq.py            
         └── client.py          # I wonder whether this is dead code           
     ├── rag/
+        ├── __init__.py
+        ├── gazetteer_aliases.txt
+        ├── gazetteer_cases.txt
+        ├── Gazetteer_concepts.txt
         └── booklet_retriever.py         # Query → relevant snippets        
     ├── __init__.py              
-    ├── core.py                  # Shared utilities
     └── prompts.py               # Prompt templates for both engines
 └── tests/
     ├── __init__.py
@@ -136,14 +139,11 @@ Used by both engines with different settings.
 #### `prompts.py`
 Contains two distinct prompt sets:
 
-
 Feedback Evaluator prompts
 Strict, rule-based, structured (five sections, citations, model alignment)
 
-
 Tutor Chat prompts
-Conversational, explanatory, RAG‑grounded, no exam structure
-
+Conversational if no legal signals with sufficient confidence, else explanatory, RAG‑grounded, no exam structure
 
 Optionally includes shared guardrails.
 
@@ -180,5 +180,4 @@ TBD.
 Stephan Balthasar (Allianz SE)
 
 ### **Release Date**
-10/03/2026
-
+18/03/2026
