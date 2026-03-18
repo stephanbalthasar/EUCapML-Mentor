@@ -484,6 +484,16 @@ with st.sidebar:
             if cq:
                 with st.expander("Combined query used for RAG"):
                     st.code(cq, language="text")
+            # --- Pinned case badge (optional UI) ---
+            fc = st.session_state.get("_focus_case")
+            if fc and (fc.get("canonical") or "").strip():
+                label = fc.get("display") or fc.get("canonical")
+                if fc.get("docket"):
+                    label = f"{label} ({fc['docket']})"
+                st.markdown(f"**📌 Pinned case:** {label}")
+                if st.button("Unpin case"):
+                    st.session_state["_focus_case"] = None
+
             
 # --- Tabs: Feedback + Tutor chat ---
 tab_feedback, tab_chat = st.tabs(["📝 Sample Exams", "💬 General Chat"])
@@ -684,6 +694,72 @@ with tab_chat:
         msgs = recent_msgs[-(window - 1):] + [current_msg]
         # Clean combination: just stitch the raw user messages
         return " ".join(msgs)
+
+    # --- Case pinning helpers (for robust follow-ups like "this decision") ---
+
+    def _maybe_pin_case_from_signals(signals):
+        """
+        If the current RAG turn detected a strong case_name signal, pin it in session state.
+        'signals' is the cleaned list you already store in _last_signals for the debugger.
+        We select the highest-confidence case_name with confidence >= 0.9.
+        """
+        if not signals:
+            return
+        best = None
+        for s in signals:
+            if (s.get("type") == "case_name"):
+                try:
+                    conf = float(s.get("confidence", 0.0) or 0.0)
+                except Exception:
+                    conf = 0.0
+                if conf >= 0.9 and (best is None or conf > float(best.get("confidence", 0.0) or 0.0)):
+                    best = s
+    
+        if not best:
+            return
+    
+        canonical = (best.get("canonical") or "").strip()
+        if not canonical:
+            return
+    
+        # Try to find a docket-like alias from the expanded set (e.g., "C-45/08")
+        expanded = best.get("expanded_preview") or ""
+        # Note: expanded_preview is a comma-joined short preview in your sidebar;
+        # if you prefer full expanded set, adjust to use the raw signals before cleaning.
+        docket = None
+        for piece in (expanded.split(",") if expanded else []):
+            p = piece.strip()
+            if p.startswith(("C-", "T-", "ECLI:", "Joined Cases")):
+                docket = p
+                break
+    
+        st.session_state["_focus_case"] = {
+            "canonical": canonical,               # lower-cased canonical (from signals)
+            "display": canonical,                 # you can map to a nicer title later
+            "docket": docket,                     # optional
+            "confidence": float(best.get("confidence", 0.0) or 0.0),
+            "ts": time.time(),
+        }
+    
+    
+    def _augment_with_pinned_case(combined_query: str) -> str:
+        """
+        Prepend the pinned case (if any) to the combined query so the retriever 'sees'
+        the anchor case even when the user asks anaphorically ("this decision").
+        """
+        fc = st.session_state.get("_focus_case")
+        if not fc or not (fc.get("canonical") or "").strip():
+            return combined_query
+    
+        tag = (fc.get("display") or fc.get("canonical") or "").strip()
+        if not tag:
+            return combined_query
+    
+        if fc.get("docket"):
+            tag = f"{tag} ({fc['docket']})"
+    
+        # Keep this simple—no labels, just plain natural text before the user's query.
+        return f"{tag}. {combined_query}"
     
     def on_ask_tutor(user_q: str, history: List[Dict[str, Any]]) -> str:
         # Optional: keep your student usage ping
@@ -709,6 +785,13 @@ with tab_chat:
                     "expanded_preview": ", ".join(sorted(list(s.get("expanded", set())))[:6]),
                 })
             st.session_state["_last_signals"] = cleaned
+            # After you computed 'cleaned' signals for the debugger (st.session_state["_last_signals"]):
+            try:
+                cleaned_signals = st.session_state.get("_last_signals") or []
+                _maybe_pin_case_from_signals(cleaned_signals)
+            except Exception:
+                # Keep UX resilient: never break the chat due to pinning
+                pass
         except Exception as e:
             # Keep UX resilient; store the error so you can see it in the panel
             st.session_state["_last_signals"] = [{"type": "ERROR", "surface": "", "canonical": str(e), "confidence": 0.0, "expanded_preview": ""}]
@@ -742,17 +825,22 @@ with tab_chat:
         
         # --- RAG vs Chat output WITHOUT inserting router metadata into the chat ---
         if decision["mode"] == "rag":
-            # Build combined query for RAG
-            combined_q = build_combined_query(
-                recent_user_msgs,
-                user_q,
-                window=3
-            )
 
-            st.session_state["_last_combined_query"] = combined_q
+            # 1) Build the plain combined query (you already have this)
+            combined_q = build_combined_query(recent_user_msgs, user_q, window=3)
             
+            # 2) (Optional but recommended) Store the plain version for debugging
+            st.session_state["_last_combined_query_plain"] = combined_q
+            
+            # 3) Augment with the pinned case, if any
+            combined_q_aug = _augment_with_pinned_case(combined_q)
+            
+            # 4) Store the augmented version too (so you can compare in the Signal Debugger)
+            st.session_state["_last_combined_query_aug"] = combined_q_aug
+            
+            # 5) Call RAG with the AUGMENTED combined query
             answer = chat_engine.answer(
-                user_query=combined_q,     # IMPORTANT
+                user_query=combined_q_aug,
                 model=model,
                 temperature=temp,
                 max_tokens=700
