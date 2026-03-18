@@ -62,20 +62,52 @@ def _ui_mode_label(mode: str, total_conf: float) -> str:
     """
     return f"Mode: {'RAG' if mode == 'rag' else 'Chat'} (Confidence={total_conf:.2f})"
 
+def accumulate_signals(messages, gaz, alias_map, window=3):
+    """
+    Returns (accumulated_signals: List[dict], total_conf: float, has_case: bool).
 
-def route(user_query: str) -> Dict[str, Any]:
+    messages: list of last N user message strings.
+    gaz, alias_map: passed into extract_signals().
+    window: number of turns (already sliced by caller).
     """
-    Confidence-based router (Option A, finalized):
-      - Let signals = extract_signals(query)
-      - total_conf = sum(confidence for each signal)
-      - has_case = any(type in {'case_name','case_no','case_number','case'})
-      - Routing:
-          * if total_conf > 2.5 -> 'rag'
-          * elif total_conf > 1.5 and has_case -> 'rag'
-          * else -> 'chat'
-    Always returns a UI label showing the mode and the exact confidence sum used.
+
+    # Extract all signals
+    collected = []
+    for msg in messages:
+        sigs = extract_signals(msg, gaz=gaz, corpus_auto_alias=alias_map) or []
+        collected.extend(sigs)
+
+    # Deduplicate by canonical → keep highest confidence per canonical
+    best = {}
+    for s in collected:
+        can = s.get("canonical")
+        if not can:
+            continue
+        conf = float(s.get("confidence", 0.0) or 0.0)
+        if can not in best or conf > best[can].get("confidence", 0.0):
+            best[can] = s
+
+    unique_signals = list(best.values())
+
+    # Accumulated confidence
+    total_conf = sum(float(s.get("confidence", 0.0) or 0.0) for s in unique_signals)
+
+    # Case flag
+    has_case = any((s.get("type") or "").lower().strip() in _CASE_TYPES for s in unique_signals)
+
+    return unique_signals, total_conf, has_case
+
+def route(user_query: str, *, recent_user_messages=None) -> Dict[str, Any]:
     """
-    # Empty/whitespace query -> assistant chat with zero diagnostics
+    NEW SIGNATURE:
+        - recent_user_messages: list of last N user turns (strings)
+          including the current message's predecessors (NOT including user_query).
+          If None, fallback to old behavior (single-turn routing).
+
+    OUTPUT unchanged.
+    """
+
+    # Fallback for empty query
     if not user_query or not user_query.strip():
         total_conf = 0.0
         mode = "chat"
@@ -85,31 +117,36 @@ def route(user_query: str) -> Dict[str, Any]:
                 "concepts": 0, "cases": 0, "case_numbers": 0,
                 "articles": 0, "sections": 0, "other": 0, "effective": 0
             },
-            "count": 0,  # effective count (display only)
+            "count": 0,
             "total_conf": total_conf,
             "ui_label": _ui_mode_label(mode, total_conf),
-            "router_version": "conf-sum-A-UI-2026-03-17",
+            "router_version": "accumulated-2026-03-18",
         }
 
-    # 1) Extract signals
-    signals: List[Dict[str, Any]] = extract_signals(
-        user_query,
-        gaz=_gaz,
-        corpus_auto_alias=_auto_alias,
-    )
+    # -------------------------------
+    # 1) ACCUMULATED SIGNALS (NEW)
+    # -------------------------------
+    WINDOW = 3
+    if not recent_user_messages:
+        # Old behavior fallback: only route last query
+        sigs = extract_signals(user_query, gaz=_gaz, corpus_auto_alias=_auto_alias) or []
+        # Use existing summarizer for UI
+        counts = _summarize_for_ui(sigs)
+        total_conf = sum(float(s.get("confidence", 0.0) or 0.0) for s in sigs)
+        has_case = any((s.get("type") or "").lower().strip() in _CASE_TYPES for s in sigs)
+    else:
+        # Slice last WINDOW - 1 previous messages (not including user_query)
+        prev = recent_user_messages[-(WINDOW - 1):]
+        msgs = prev + [user_query]
 
-    # 2) Sum confidences and compute has_case
-    total_conf = 0.0
-    has_case = False
+        unique_sigs, total_conf, has_case = accumulate_signals(
+            msgs, gaz=_gaz, alias_map=_auto_alias, window=WINDOW
+        )
+        counts = _summarize_for_ui(unique_sigs)
 
-    for s in signals:
-        # confidence defaults safely to 0.0 if missing
-        total_conf += float(s.get("confidence", 0.0) or 0.0)
-        t = (s.get("type") or "").strip().lower()
-        if t in _CASE_TYPES:
-            has_case = True
-
-    # 3) Decide mode (ONLY by confidence and has_case per your spec)
+    # -------------------------------
+    # 2) DECIDE MODE (unchanged thresholds)
+    # -------------------------------
     if total_conf >= 2.0:
         mode = "rag"
     elif total_conf > 1.5 and has_case:
@@ -117,15 +154,11 @@ def route(user_query: str) -> Dict[str, Any]:
     else:
         mode = "chat"
 
-    # 4) UI counts (display/debug only; not part of the decision)
-    counts = _summarize_for_ui(signals)
-
-    # 5) Return with a ready-to-display label
     return {
         "mode": mode,
-        "count": counts["effective"],    # for display only
+        "count": counts["effective"],
         "counts": counts,
         "total_conf": round(total_conf, 3),
-        "ui_label": _ui_mode_label(mode, total_conf),  # <- always indicates mode + confidence
-        "router_version": "conf-sum-A-UI-2026-03-17",
+        "ui_label": _ui_mode_label(mode, total_conf),
+        "router_version": "accumulated-2026-03-18",
     }
