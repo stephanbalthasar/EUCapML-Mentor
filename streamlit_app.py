@@ -772,7 +772,7 @@ with tab_chat:
         title="General Chat (Course Material)",
         placeholder="Ask the tutor…",
         on_ask=on_ask_tutor,
-        clear_label="🗑️ Clear chat for new topic ",
+        clear_label="🗑️ Clear chat for new topics! ",
     )
 
 # --- Page footer (authenticated pages only) ---
