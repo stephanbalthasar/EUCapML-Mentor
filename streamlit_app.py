@@ -496,7 +496,7 @@ with st.sidebar:
 
             
 # --- Tabs: Feedback + Tutor chat ---
-tab_feedback, tab_chat = st.tabs(["📝 Sample Exams", "💬 General Chat"])
+tab_feedback, tab_chat = st.tabs(["📝 Exam Assistant", "💬 EUCapML Booklet"])
 
 # Small helper: persist latest run per case+question
 def _key(case_id: str, q_label: str) -> str:
