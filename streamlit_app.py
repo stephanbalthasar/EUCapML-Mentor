@@ -14,6 +14,13 @@ from app.router import route
 from mentor.rag.booklet_retriever import extract_signals
 # ───────────────────────────────────────────────────────────────────────────────
 
+st.set_page_config(
+    page_title="B's Bot",
+    page_icon="assets/b2_logo_1024.png",
+    layout="wide",
+    initial_sidebar_state="collapsed"  # NEW: collapse sidebar by default
+)
+
 # === HELPERS ===
 # === APP BAR ===
 def render_brand_bar_aligned(
@@ -293,13 +300,6 @@ from mentor.rag.booklet_retriever import ParagraphRetriever
 from mentor.engines.chat_engine import ChatEngine
 from mentor.engines.feedback_engine import FeedbackEngine
 from mentor.llm.groq import GroqClient
-
-st.set_page_config(
-    page_title="B's Bot",
-    page_icon="assets/b2_logo_1024.png",
-    layout="wide",
-    initial_sidebar_state="collapsed"  # NEW: collapse sidebar by default
-)
 
 # Global width cap for a professional look (applies to all pages)
 st.markdown("""
